@@ -6,7 +6,11 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import * as fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "url";
-import sharp from "sharp"; // Add sharp for image processing
+import sharp from "sharp";
+import { v4 as uuidv4 } from 'uuid';
+import rateLimit from 'express-rate-limit';
+import PQueue from 'p-queue';
+import schedule from 'node-schedule';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -18,18 +22,44 @@ const PORT = process.env.PORT || 3001;
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-image-preview" });
 
+// Session tracking for kiosks
+const activeSessions = new Map();
+const kioskStats = {
+  'kiosk-1': { total: 0, completed: 0, failed: 0, lastActive: null },
+  'kiosk-2': { total: 0, completed: 0, failed: 0, lastActive: null },
+  'kiosk-3': { total: 0, completed: 0, failed: 0, lastActive: null },
+  'kiosk-4': { total: 0, completed: 0, failed: 0, lastActive: null }
+};
+
+// Processing queue - limit concurrent Gemini API calls
+const generationQueue = new PQueue({ 
+  concurrency: 2, // Process 2 images at once
+  interval: 1000, // 1 second interval
+  intervalCap: 3  // Max 3 per second
+});
+
+// Rate limiter per kiosk
+const kioskLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute window
+  max: 5, // 5 requests per minute per kiosk
+  keyGenerator: (req) => req.headers['x-kiosk-id'] || 'unknown',
+  message: 'Too many requests from this kiosk, please wait',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // Middleware
 app.use(cors());
 app.use(express.json());
 app.use('/outputs', express.static('outputs'));
 app.use('/backgrounds', express.static('backgrounds'));
-app.use('/overlays', express.static('overlays')); // Add overlay static path
+app.use('/overlays', express.static('overlays'));
 
-// Multer setup for image uploads
+// Multer setup
 const storage = multer.memoryStorage();
 const upload = multer({ 
   storage,
-  limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
+  limits: { fileSize: 10 * 1024 * 1024 }
 });
 
 // Ensure directories exist
@@ -43,20 +73,19 @@ async function ensureDir(dir) {
 await ensureDir('outputs');
 await ensureDir('uploads');
 await ensureDir('backgrounds');
-await ensureDir('overlays'); // Add overlays directory
+await ensureDir('overlays');
+await ensureDir('logs');
 
-// Convert file to inline data for Gemini
+// Your existing helper functions
 async function fileToInlineData(buffer, mimeType = "image/jpeg") {
   const b64 = buffer.toString("base64");
   return { inlineData: { mimeType, data: b64 } };
 }
 
-// Apply overlay to generated image
 async function applyOverlay(generatedImageBuffer) {
   try {
     const overlayPath = path.join(__dirname, 'overlays', 'amsterdam-marathon-2025.png');
     
-    // Check if overlay exists
     try {
       await fs.access(overlayPath);
     } catch {
@@ -64,10 +93,8 @@ async function applyOverlay(generatedImageBuffer) {
       return generatedImageBuffer;
     }
 
-    // Get dimensions of generated image
     const generatedMetadata = await sharp(generatedImageBuffer).metadata();
     
-    // Resize overlay to match generated image dimensions
     const overlayBuffer = await sharp(overlayPath)
       .resize(generatedMetadata.width, generatedMetadata.height, {
         fit: 'fill',
@@ -75,16 +102,13 @@ async function applyOverlay(generatedImageBuffer) {
       })
       .toBuffer();
 
-    // Composite the overlay onto the generated image
     const compositeImage = await sharp(generatedImageBuffer)
-      .composite([
-        {
-          input: overlayBuffer,
-          top: 0,
-          left: 0,
-          blend: 'over'
-        }
-      ])
+      .composite([{
+        input: overlayBuffer,
+        top: 0,
+        left: 0,
+        blend: 'over'
+      }])
       .png()
       .toBuffer();
 
@@ -95,7 +119,7 @@ async function applyOverlay(generatedImageBuffer) {
   }
 }
 
-// Background configurations
+// Your existing BACKGROUNDS configuration
 const BACKGROUNDS = {
   "amsterdam-canal": {
     name: "Amsterdam Canal",
@@ -123,8 +147,9 @@ const BACKGROUNDS = {
   }
 };
 
-// Generate prompt based on gender selection
+// Your existing generateGenderAwarePrompt function (keeping as is)
 function generateGenderAwarePrompt(gender, backgroundInfo) {
+  // ... (keep your existing prompt generation code exactly as is)
   const genderSpecific = {
     male: "Ensure masculine athletic build and features are preserved. Use typical men's marathon running attire.",
     female: "Ensure feminine features and build are preserved. Use typical women's marathon running attire.",
@@ -137,7 +162,6 @@ function generateGenderAwarePrompt(gender, backgroundInfo) {
   const promptLines = [
     "Photoreal multi-image fusion for Amsterdam Marathon 2025.",
     "",
-    // CRITICAL NO BIB INSTRUCTION - MOVED TO TOP
     "CRITICAL INSTRUCTION - NO RACE BIBS:",
     "- DO NOT add any bib number, race number, or participant number",
     "- The runner's chest area must be completely clear of any numbers or race identifiers",
@@ -145,13 +169,10 @@ function generateGenderAwarePrompt(gender, backgroundInfo) {
     "- ABSOLUTELY NO numerical identifiers on the clothing",
     "- If you see any number on the chest area, remove it",
     "",
-    // Identity preservation
     "FIRST image: person. Preserve identity exactly: face, skin tone, facial hair, hair texture/coverage, body shape, height proportions, hands, and any visible distinguishing features.",
     "",
-    // Gender-aware instruction
     genderInstruction,
     "",
-    // CRITICAL SCALE AND PROPORTION INSTRUCTIONS
     "CRITICAL SCALE REQUIREMENTS:",
     "- The runner MUST be at REALISTIC HUMAN SCALE relative to the background",
     "- If there are buildings, the person should be appropriately small compared to them",
@@ -161,18 +182,14 @@ function generateGenderAwarePrompt(gender, backgroundInfo) {
     "- In wide city squares, people appear quite small relative to the space",
     "- NEVER make the person unnaturally large or dominant in the frame",
     "",
-    // Religious/cultural preservation
     "If the subject wears a hijab, turban, yarmulke, or any religious/cultural head covering, KEEP IT UNCHANGED.",
     "If the subject wears eyeglasses in the FIRST image, KEEP those exact glasses.",
     "",
-    // No hallucination rules
     "If the subject is NOT wearing eyeglasses in the FIRST image, do not add any.",
     "Do not invent new accessories not present in the FIRST image.",
     "",
-    // Mobility aids
     "If the subject uses a mobility aid, KEEP it exactly and maintain natural usage posture.",
     "",
-    // Marathon runner transformation - EMPHASIZE NO BIB AGAIN
     "Transform into Amsterdam Marathon runner WITHOUT any race bib:",
     "- Plain athletic shirt/top with NO numbers, NO bib, NO race identifiers",
     "- The chest area must remain completely clear and unobstructed",
@@ -182,13 +199,11 @@ function generateGenderAwarePrompt(gender, backgroundInfo) {
     "- Natural running form: forward lean, arms pumping, one foot contacting ground",
     "- Remember: This is a training run photo, NOT a race photo, so NO BIBS",
     "",
-    // Background integration
     "SECOND image: " + backgroundInfo.description,
     "Integrate the runner seamlessly into the Amsterdam marathon route.",
     "Place runner at appropriate distance based on background perspective.",
     "This should look like a training or practice run, not an official race.",
     "",
-    // Perspective and composition
     "PERSPECTIVE AND COMPOSITION:",
     "- Match the camera angle and height of the background photo",
     "- If background is shot from ground level, keep runner at ground level",
@@ -196,13 +211,11 @@ function generateGenderAwarePrompt(gender, backgroundInfo) {
     "- The runner should occupy 10-20% of frame height in city squares",
     "- In park paths, runner can be 30-40% of frame height if closer to camera",
     "",
-    // Lighting matching
     "Match lighting to background: " + backgroundInfo.lighting,
     "Cast appropriate ground shadows matching scene direction.",
     "Shadow size must match the person's scale in the scene.",
     "Add natural reflections and color temperature matching.",
     "",
-    // Final touches - REMIND AGAIN ABOUT NO BIBS
     "Add marathon atmosphere but as a TRAINING RUN:",
     "- Other casual runners in background if appropriate (also no bibs)",
     "- Park or city atmosphere, not race day atmosphere",
@@ -215,6 +228,106 @@ function generateGenderAwarePrompt(gender, backgroundInfo) {
 
   return promptLines.join("\n");
 }
+
+// Process generation function for queue
+async function processGeneration(fileBuffer, mimetype, { backgroundId, gender }, kioskId) {
+  const sessionId = uuidv4();
+  const startTime = Date.now();
+  
+  // Update kiosk stats
+  kioskStats[kioskId].total++;
+  kioskStats[kioskId].lastActive = new Date();
+  
+  // Track session
+  activeSessions.set(sessionId, {
+    kioskId,
+    startTime,
+    status: 'processing',
+    backgroundId,
+    gender
+  });
+
+  try {
+    const backgroundInfo = BACKGROUNDS[backgroundId];
+    if (!backgroundInfo) {
+      throw new Error('Invalid background selection');
+    }
+
+    // Read background image
+    const backgroundPath = path.join(__dirname, 'backgrounds', backgroundInfo.file);
+    const backgroundBuffer = await fs.readFile(backgroundPath);
+
+    // Convert to Gemini format
+    const personPart = await fileToInlineData(fileBuffer, mimetype);
+    const envPart = await fileToInlineData(backgroundBuffer, "image/jpeg");
+
+    // Generate prompt
+    const prompt = generateGenderAwarePrompt(gender, backgroundInfo);
+
+    console.log(`[${kioskId}] Generating image for session ${sessionId.slice(0,8)}...`);
+    
+    // Call Gemini API
+    const result = await model.generateContent([prompt, personPart, envPart]);
+    const parts = result.response?.candidates?.[0]?.content?.parts || [];
+
+    let outputPath = null;
+    for (const part of parts) {
+      if (part.inlineData?.data) {
+        let buffer = Buffer.from(part.inlineData.data, "base64");
+        
+        // Apply overlay
+        buffer = await applyOverlay(buffer);
+        
+        // Create filename with kiosk ID
+        const filename = `marathon_${kioskId}_${Date.now()}_${sessionId.slice(0,8)}.png`;
+        outputPath = path.join(__dirname, 'outputs', filename);
+        await fs.writeFile(outputPath, buffer);
+        
+        console.log(`[${kioskId}] ✅ Generated: ${filename}`);
+        
+        // Update session status
+        activeSessions.set(sessionId, {
+          ...activeSessions.get(sessionId),
+          status: 'completed',
+          endTime: Date.now(),
+          outputFile: filename
+        });
+        
+        // Update kiosk stats
+        kioskStats[kioskId].completed++;
+        
+        return { 
+          success: true, 
+          imageUrl: `/outputs/${filename}`,
+          message: 'Marathon photo generated successfully!',
+          sessionId,
+          kioskId,
+          queueSize: generationQueue.size,
+          processingTime: Date.now() - startTime
+        };
+      }
+    }
+
+    throw new Error('No image generated');
+
+  } catch (error) {
+    console.error(`[${kioskId}] Generation error:`, error);
+    
+    // Update session status
+    activeSessions.set(sessionId, {
+      ...activeSessions.get(sessionId),
+      status: 'failed',
+      error: error.message,
+      endTime: Date.now()
+    });
+    
+    // Update kiosk stats
+    kioskStats[kioskId].failed++;
+    
+    throw error;
+  }
+}
+
 // API Endpoints
 
 // Get available backgrounds
@@ -228,8 +341,10 @@ app.get('/api/backgrounds', (req, res) => {
   res.json(backgroundList);
 });
 
-// Process image
-app.post('/api/generate', upload.single('selfie'), async (req, res) => {
+// Main generate endpoint with queue management
+app.post('/api/generate', kioskLimiter, upload.single('selfie'), async (req, res) => {
+  const kioskId = req.headers['x-kiosk-id'] || 'unknown';
+  
   try {
     const { backgroundId, gender } = req.body;
     const selfieBuffer = req.file.buffer;
@@ -238,67 +353,133 @@ app.post('/api/generate', upload.single('selfie'), async (req, res) => {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    const backgroundInfo = BACKGROUNDS[backgroundId];
-    if (!backgroundInfo) {
-      return res.status(400).json({ error: 'Invalid background selection' });
+    // Check queue size
+    if (generationQueue.size > 10) {
+      return res.status(503).json({ 
+        error: 'Server is busy, please try again',
+        queueSize: generationQueue.size 
+      });
     }
 
-    // Read background image
-    const backgroundPath = path.join(__dirname, 'backgrounds', backgroundInfo.file);
-    const backgroundBuffer = await fs.readFile(backgroundPath);
-
-    // Convert to Gemini format
-    const personPart = await fileToInlineData(selfieBuffer, req.file.mimetype);
-    const envPart = await fileToInlineData(backgroundBuffer, "image/jpeg");
-
-    // Generate prompt
-    const prompt = generateGenderAwarePrompt(gender, backgroundInfo);
-
-    console.log('Generating with Gemini...');
+    console.log(`[${kioskId}] Adding to queue. Current queue size: ${generationQueue.size}`);
     
-    // Call Gemini API
-    const result = await model.generateContent([prompt, personPart, envPart]);
+    // Add to processing queue
+    const result = await generationQueue.add(
+      () => processGeneration(
+        req.file.buffer, 
+        req.file.mimetype, 
+        { backgroundId, gender }, 
+        kioskId
+      ),
+      { priority: kioskId === 'kiosk-3' ? 1 : 0 } // VIP booth gets priority
+    );
 
-    const parts = result.response?.candidates?.[0]?.content?.parts || [];
-
-    let outputPath = null;
-    for (const part of parts) {
-      if (part.inlineData?.data) {
-        let buffer = Buffer.from(part.inlineData.data, "base64");
-        
-        // Apply the Amsterdam Marathon overlay
-        buffer = await applyOverlay(buffer);
-        
-        const filename = `marathon_${Date.now()}.png`;
-        outputPath = path.join(__dirname, 'outputs', filename);
-        await fs.writeFile(outputPath, buffer);
-        console.log('✅ Generated with overlay:', filename);
-        
-        res.json({ 
-          success: true, 
-          imageUrl: `/outputs/${filename}`,
-          message: 'Marathon photo generated successfully!'
-        });
-        return;
-      }
-    }
-
-    throw new Error('No image generated');
+    res.json(result);
 
   } catch (error) {
-    console.error('Generation error:', error);
+    console.error(`[${kioskId}] Error:`, error);
     res.status(500).json({ 
       error: 'Failed to generate image',
-      details: error.message 
+      details: error.message,
+      kioskId
     });
   }
 });
 
-// Health check
+// Monitoring endpoint
+app.get('/api/monitor', (req, res) => {
+  const recentSessions = Array.from(activeSessions.entries())
+    .slice(-20)
+    .map(([id, session]) => ({
+      id: id.slice(0, 8),
+      ...session,
+      duration: session.endTime ? session.endTime - session.startTime : null
+    }));
+
+  res.json({
+    kiosks: kioskStats,
+    queueSize: generationQueue.size,
+    queuePending: generationQueue.pending,
+    totalSessions: activeSessions.size,
+    recentSessions,
+    serverUptime: process.uptime(),
+    memoryUsage: process.memoryUsage(),
+    timestamp: new Date()
+  });
+});
+
+// Kiosk status endpoint
+app.get('/api/kiosk/:kioskId/status', (req, res) => {
+  const { kioskId } = req.params;
+  const stats = kioskStats[kioskId];
+  
+  if (!stats) {
+    return res.status(404).json({ error: 'Invalid kiosk ID' });
+  }
+
+  res.json({
+    kioskId,
+    ...stats,
+    queuePosition: generationQueue.size,
+    serverStatus: 'online'
+  });
+});
+
+// Health check with kiosk support
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', service: 'Amsterdam Marathon Photobooth' });
+  const kioskId = req.headers['x-kiosk-id'] || req.query.kiosk;
+  
+  res.json({ 
+    status: 'ok', 
+    service: 'Amsterdam Marathon Photobooth',
+    kioskId,
+    timestamp: new Date(),
+    queueStatus: {
+      size: generationQueue.size,
+      pending: generationQueue.pending
+    }
+  });
+});
+
+// Clean up old sessions every 30 minutes
+setInterval(() => {
+  const oneHourAgo = Date.now() - (60 * 60 * 1000);
+  let cleaned = 0;
+  
+  for (const [id, session] of activeSessions.entries()) {
+    if (session.startTime < oneHourAgo) {
+      activeSessions.delete(id);
+      cleaned++;
+    }
+  }
+  
+  if (cleaned > 0) {
+    console.log(`Cleaned ${cleaned} old sessions`);
+  }
+}, 30 * 60 * 1000);
+
+// Clean up old images every hour
+schedule.scheduleJob('0 * * * *', async () => {
+  try {
+    const outputDir = path.join(__dirname, 'outputs');
+    const files = await fs.readdir(outputDir);
+    const now = Date.now();
+    const maxAge = 4 * 60 * 60 * 1000; // 4 hours
+    
+    for (const file of files) {
+      const filePath = path.join(outputDir, file);
+      const stats = await fs.stat(filePath);
+      if (now - stats.mtimeMs > maxAge) {
+        await fs.unlink(filePath);
+        console.log(`Deleted old file: ${file}`);
+      }
+    }
+  } catch (error) {
+    console.error('Cleanup error:', error);
+  }
 });
 
 app.listen(PORT, () => {
   console.log(`🏃 Marathon Photobooth Backend running on port ${PORT}`);
+  console.log(`📊 Monitor dashboard available at http://localhost:${PORT}/api/monitor`);
 });

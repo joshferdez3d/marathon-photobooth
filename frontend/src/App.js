@@ -1,10 +1,12 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import './App.css';
 import BackgroundSelector from './components/BackgroundSelector';
 import GenderSelector from './components/GenderSelector';
 import CameraCapture from './components/CameraCapture';
 import ResultDisplay from './components/ResultDisplay';
+import KioskMonitor from './components/KioskMonitor'; // New component
 import axios from 'axios';
+import KIOSK_CONFIG from './config/kiosk';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001';
 
@@ -16,30 +18,126 @@ function App() {
   const [generatedImage, setGeneratedImage] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [showMonitor, setShowMonitor] = useState(false);
+  const [queuePosition, setQueuePosition] = useState(null);
+  
+  // Inactivity timer
+  const inactivityTimer = useRef(null);
+  const lastActivityTime = useRef(Date.now());
+
+  // Get kiosk info
+  const kioskInfo = KIOSK_CONFIG.settings[KIOSK_CONFIG.kioskId] || KIOSK_CONFIG.settings['kiosk-1'];
+
+  // Reset to start screen
+  const resetToStart = useCallback(() => {
+    console.log(`[${KIOSK_CONFIG.kioskId}] Resetting due to inactivity`);
+    setCurrentStep(1);
+    setSelectedBackground(null);
+    setSelectedGender(null);
+    setCapturedImage(null);
+    setGeneratedImage(null);
+    setError(null);
+    setQueuePosition(null);
+  }, []);
+
+  // Reset inactivity timer
+  const resetInactivityTimer = useCallback(() => {
+    lastActivityTime.current = Date.now();
+    
+    if (inactivityTimer.current) {
+      clearTimeout(inactivityTimer.current);
+    }
+    
+    // Don't reset if on step 1 (start screen) or loading
+    if (currentStep > 1 && !isLoading) {
+      inactivityTimer.current = setTimeout(() => {
+        resetToStart();
+      }, KIOSK_CONFIG.inactivityTimeout);
+    }
+  }, [currentStep, isLoading, resetToStart]);
+
+  // Setup inactivity tracking
+  useEffect(() => {
+    const events = ['mousedown', 'touchstart', 'keypress'];
+    
+    const handleActivity = () => {
+      resetInactivityTimer();
+    };
+    
+    events.forEach(event => {
+      document.addEventListener(event, handleActivity);
+    });
+    
+    resetInactivityTimer();
+    
+    return () => {
+      events.forEach(event => {
+        document.removeEventListener(event, handleActivity);
+      });
+      if (inactivityTimer.current) {
+        clearTimeout(inactivityTimer.current);
+      }
+    };
+  }, [resetInactivityTimer]);
+
+  // Check kiosk health periodically
+  useEffect(() => {
+    const checkHealth = async () => {
+      try {
+        await axios.get(`${API_URL}/api/health`, {
+          headers: { 'X-Kiosk-Id': KIOSK_CONFIG.kioskId }
+        });
+      } catch (error) {
+        console.error('Health check failed:', error);
+      }
+    };
+    
+    checkHealth();
+    const interval = setInterval(checkHealth, 30000); // Every 30 seconds
+    
+    return () => clearInterval(interval);
+  }, []);
+
+  // Toggle monitor with keyboard shortcut (Ctrl+Shift+M)
+  useEffect(() => {
+    const handleKeyPress = (e) => {
+      if (e.ctrlKey && e.shiftKey && e.key === 'M') {
+        setShowMonitor(!showMonitor);
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [showMonitor]);
 
   const handleBackgroundSelect = (background) => {
     setSelectedBackground(background);
     setCurrentStep(2);
+    resetInactivityTimer();
   };
 
   const handleGenderSelect = (gender) => {
     setSelectedGender(gender);
     setCurrentStep(3);
+    resetInactivityTimer();
   };
 
   const handleImageCapture = (imageData) => {
     setCapturedImage(imageData);
     setCurrentStep(4);
+    resetInactivityTimer();
   };
 
   const handleRetake = () => {
     setCapturedImage(null);
     setCurrentStep(3);
+    resetInactivityTimer();
   };
 
   const handleGenerate = async () => {
     setIsLoading(true);
     setError(null);
+    setQueuePosition(null);
 
     try {
       // Convert base64 to blob
@@ -52,23 +150,39 @@ function App() {
       formData.append('backgroundId', selectedBackground.id);
       formData.append('gender', selectedGender);
 
-      // Send to backend
+      // Send to backend with kiosk ID
       const response = await axios.post(`${API_URL}/api/generate`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-        timeout: 60000 // 60 second timeout
+        headers: { 
+          'Content-Type': 'multipart/form-data',
+          'X-Kiosk-Id': KIOSK_CONFIG.kioskId
+        },
+        timeout: kioskInfo.timeout || 120000
       });
 
       if (response.data.success) {
         setGeneratedImage(`${API_URL}${response.data.imageUrl}`);
         setCurrentStep(5);
+        
+        // Log successful generation
+        console.log(`[${KIOSK_CONFIG.kioskId}] Generated in ${response.data.processingTime}ms`);
       } else {
         throw new Error(response.data.error || 'Generation failed');
       }
     } catch (err) {
-      console.error('Generation error:', err);
-      setError(err.message || 'Failed to generate image. Please try again.');
+      console.error(`[${KIOSK_CONFIG.kioskId}] Generation error:`, err);
+      
+      // Check if it's a queue/rate limit error
+      if (err.response?.status === 503) {
+        setError('The system is busy. Please wait a moment and try again.');
+        setQueuePosition(err.response?.data?.queueSize);
+      } else if (err.response?.status === 429) {
+        setError('Please wait a moment before trying again.');
+      } else {
+        setError(err.message || 'Failed to generate image. Please try again.');
+      }
     } finally {
       setIsLoading(false);
+      resetInactivityTimer();
     }
   };
 
@@ -79,13 +193,22 @@ function App() {
     setCapturedImage(null);
     setGeneratedImage(null);
     setError(null);
+    setQueuePosition(null);
+    resetInactivityTimer();
   };
 
   return (
-    <div className="App">
+    <div className="App" data-kiosk={KIOSK_CONFIG.kioskId}>
+      {showMonitor && <KioskMonitor kioskId={KIOSK_CONFIG.kioskId} />}
+      
       <header className="App-header">
         <h1>🏃 Amsterdam Marathon 2025</h1>
-        <h2>AI Photo Booth</h2>
+        <h2>AI Photo Booth - {kioskInfo.name}</h2>
+        {KIOSK_CONFIG.debug && (
+          <div className="kiosk-debug">
+            Kiosk: {KIOSK_CONFIG.kioskId} | Location: {kioskInfo.location}
+          </div>
+        )}
       </header>
 
       <main className="App-main">
@@ -117,7 +240,12 @@ function App() {
                 {isLoading ? 'Generating... ⏳' : '✨ Generate Marathon Photo'}
               </button>
             </div>
-            {error && <div className="error-message">{error}</div>}
+            {error && (
+              <div className="error-message">
+                {error}
+                {queuePosition && <p>Queue position: {queuePosition}</p>}
+              </div>
+            )}
           </div>
         )}
 
@@ -125,6 +253,7 @@ function App() {
           <ResultDisplay 
             imageUrl={generatedImage} 
             onStartOver={handleStartOver}
+            kioskId={KIOSK_CONFIG.kioskId}
           />
         )}
 
@@ -132,9 +261,20 @@ function App() {
           <div className="loading-overlay">
             <div className="loader"></div>
             <p>Creating your marathon moment...</p>
+            <p className="loading-subtitle">This may take 30-60 seconds</p>
+            {queuePosition && <p>Position in queue: {queuePosition}</p>}
           </div>
         )}
       </main>
+
+      {/* Inactivity warning */}
+      {currentStep > 1 && !isLoading && (
+        <div className="inactivity-timer" style={{
+          display: Date.now() - lastActivityTime.current > 45000 ? 'block' : 'none'
+        }}>
+          Session will reset in {Math.ceil((KIOSK_CONFIG.inactivityTimeout - (Date.now() - lastActivityTime.current)) / 1000)} seconds
+        </div>
+      )}
     </div>
   );
 }

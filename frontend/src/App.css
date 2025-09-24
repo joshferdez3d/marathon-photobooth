@@ -679,6 +679,65 @@
   }
 }
 
+.kiosk-debug {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  font-size: 0.8rem;
+  opacity: 0.6;
+  background: rgba(0, 0, 0, 0.5);
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+}
+
+/* Loading subtitle */
+.loading-subtitle {
+  font-size: 0.9rem;
+  opacity: 0.8;
+  margin-top: 0.5rem;
+}
+
+/* Queue position display */
+.error-message p {
+  margin-top: 0.5rem;
+  font-size: 0.9rem;
+}
+
+/* Kiosk-specific color coding (optional) */
+[data-kiosk="kiosk-1"] .App-header {
+  border-bottom-color: #4E84C4;
+}
+
+[data-kiosk="kiosk-2"] .App-header {
+  border-bottom-color: #45a049;
+}
+
+[data-kiosk="kiosk-3"] .App-header {
+  border-bottom-color: #FFA726;
+}
+
+[data-kiosk="kiosk-4"] .App-header {
+  border-bottom-color: #EF5350;
+}
+
+/* Disable text selection for kiosk mode */
+body.kiosk-mode {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+/* Disable scrollbars in kiosk mode */
+body.kiosk-mode::-webkit-scrollbar {
+  display: none;
+}
+
+body.kiosk-mode {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
 /* Landscape orientation adjustments */
 @media screen and (orientation: landscape) {
   .camera-container {

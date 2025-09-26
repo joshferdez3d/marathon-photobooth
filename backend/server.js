@@ -119,116 +119,369 @@ async function applyOverlay(generatedImageBuffer) {
   }
 }
 
-// Your existing BACKGROUNDS configuration
+// Enhanced BACKGROUNDS configuration with time period
 const BACKGROUNDS = {
   "amsterdam-canal": {
-    name: "Amsterdam Canal",
-    file: "amsterdam-canal.jpg",
-    description: "Historic Amsterdam canal with traditional Dutch houses",
-    lighting: "overcast Northern European light, soft shadows"
+    name: "Amsterdam Canal - Historic",
+    file: "amsterdam-canal.png",
+    description: "Historic Amsterdam canal with traditional Dutch houses, flower market scene",
+    lighting: "overcast Northern European light, soft shadows",
+    colorTreatment: "sepia vintage filter with muted browns and yellows",
+    composition: "canal on left, street path on right side",
+    timePeriod: "past",
+    era: "early 1900s"
   },
   "vondelpark": {
-    name: "Vondelpark",
+    name: "Vondelpark - Modern",
     file: "vondelpark.jpg",
     description: "Green park setting with trees and pathways",
-    lighting: "dappled sunlight through trees, natural green tones"
+    lighting: "dappled sunlight through trees, natural green tones",
+    colorTreatment: "full color natural tones",
+    composition: "centered park path",
+    timePeriod: "present",
+    era: "2025"
   },
   "dam-square": {
-    name: "Dam Square",
+    name: "Dam Square - Contemporary",
     file: "dam-square.jpg",
     description: "Bustling city center with historic buildings",
-    lighting: "urban daylight, mixed shadows from buildings"
+    lighting: "urban daylight, mixed shadows from buildings",
+    colorTreatment: "full color modern photography",
+    composition: "wide open square, centered composition",
+    timePeriod: "present",
+    era: "2025"
   },
   "olympic-stadium": {
-    name: "Olympic Stadium",
+    name: "Olympic Stadium - Future",
     file: "olympic-stadium.png",
-    description: "Modern stadium setting",
-    lighting: "bright athletic venue lighting"
+    description: "Futuristic stadium setting with advanced architecture",
+    lighting: "bright athletic venue lighting",
+    colorTreatment: "full color vibrant tones",
+    composition: "stadium entrance, centered",
+    timePeriod: "future",
+    era: "2050s"
   }
 };
 
-// Your existing generateGenderAwarePrompt function (keeping as is)
+// Helper function to get period-appropriate GENDER-NEUTRAL athletic wear
+function getPeriodAppropriateClothing(timePeriod, era) {
+  const clothingByPeriod = {
+    past: [
+      "HISTORICAL ATHLETIC ATTIRE (Early 1900s) - GENDER NEUTRAL:",
+      "- Simple white or cream cotton athletic shirt (not too fitted, not too loose)",
+      "- Dark colored knee-length athletic shorts or knickerbockers (navy, black, or brown)",
+      "- Long dark socks pulled up to just below the knees",
+      "- Simple canvas or leather lace-up athletic shoes/plimsolls",
+      "- Natural fabrics only (cotton, wool, linen) - no synthetic materials",
+      "- Modest, practical fit appropriate for 1900s athletics",
+      "- No modern logos, text, or branding",
+      "- Overall appearance of an early Olympic athlete or physical culture enthusiast"
+    ],
+    present: [
+      "MODERN ATHLETIC ATTIRE (2025) - GENDER NEUTRAL:",
+      "- Contemporary moisture-wicking running t-shirt in solid athletic colors",
+      "- Modern running shorts (mid-thigh length, not too short or long)",
+      "- Current model running shoes (subtle design, no excessive branding)",
+      "- Optional: simple running watch or fitness tracker",
+      "- Technical athletic fabrics with natural drape",
+      "- Comfortable, functional fit suitable for marathon running",
+      "- Clean, minimalist athletic aesthetic"
+    ],
+    future: [
+      "FUTURISTIC ATHLETIC ATTIRE (2050s) - GENDER NEUTRAL:",
+      "- Sleek bio-responsive athletic top with subtle geometric patterns",
+      "- Streamlined running shorts with integrated smart fabric technology",
+      "- Advanced cushioning running shoes with minimal, elegant design",
+      "- Subtle holographic or bioluminescent accent lines (not overwhelming)",
+      "- Matte or subtly iridescent fabric finishes",
+      "- Form-following (not form-fitting) silhouette",
+      "- Clean, minimalist future aesthetic without excessive tech elements",
+      "- Unified, genderless design language"
+    ]
+  };
+
+  return clothingByPeriod[timePeriod] || clothingByPeriod.present;
+}
+
+// Enhanced prompt generation function with gender-neutral clothing
 function generateGenderAwarePrompt(gender, backgroundInfo) {
-  // ... (keep your existing prompt generation code exactly as is)
+  // Gender instructions for body/feature preservation ONLY, not clothing
   const genderSpecific = {
-    male: "Ensure masculine athletic build and features are preserved. Use typical men's marathon running attire.",
-    female: "Ensure feminine features and build are preserved. Use typical women's marathon running attire.",
-    "non-binary": "Respect androgynous or mixed-gender presentation. Use unisex athletic wear that feels comfortable and non-gendered.",
-    trans: "Be respectful of gender presentation as shown in the photo. Choose athletic wear that affirms the presented gender identity."
+    male: "Preserve masculine facial features, body build, and proportions from the original photo.",
+    female: "Preserve feminine facial features, body build, and proportions from the original photo.",
+    "non-binary": "Preserve the exact facial features, body build, and proportions from the original photo.",
+    trans: "Respectfully preserve the facial features, body build, and proportions from the original photo."
   };
 
   const genderInstruction = genderSpecific[gender] || genderSpecific["non-binary"];
 
+  // Get period-appropriate GENDER-NEUTRAL clothing
+  const periodClothing = getPeriodAppropriateClothing(
+    backgroundInfo.timePeriod || "present",
+    backgroundInfo.era || "2025"
+  );
+
+  // Determine color treatment instructions
+  let colorTreatmentInstructions = "";
+  if (backgroundInfo.colorTreatment) {
+    if (backgroundInfo.colorTreatment.includes("sepia") || backgroundInfo.colorTreatment.includes("vintage")) {
+      colorTreatmentInstructions = [
+        "CRITICAL COLOR MATCHING:",
+        "- Apply SEPIA TONE to the entire generated person to match the vintage background filter",
+        "- Convert all colors to warm browns, yellows, and muted earth tones",
+        "- NO vibrant or saturated colors - everything must have vintage/antique coloring",
+        "- Athletic wear should appear in muted, desaturated tones matching the sepia filter",
+        "- Skin tones should have the warm, golden-brown cast of sepia photography",
+        "- The person must look like they belong in the same vintage photograph",
+        ""
+      ].join("\n");
+    } else if (backgroundInfo.colorTreatment.includes("black and white") || backgroundInfo.colorTreatment.includes("monochrome")) {
+      colorTreatmentInstructions = [
+        "CRITICAL COLOR MATCHING:",
+        "- Convert the entire person to BLACK AND WHITE/GRAYSCALE",
+        "- NO color should remain on the person - full monochrome treatment",
+        "- Match the contrast levels of the background",
+        "- Athletic wear appears in shades of gray",
+        "- The person must look like part of the same black and white photograph",
+        ""
+      ].join("\n");
+    }
+  }
+
+  // Determine composition instructions
+  let compositionInstructions = "";
+  if (backgroundInfo.composition) {
+    if (backgroundInfo.composition.includes("right side")) {
+      compositionInstructions = [
+        "COMPOSITION PLACEMENT:",
+        "- Position the runner on the RIGHT SIDE of the frame where the path/street is",
+        "- Do not center the runner - they should be running along the right pathway",
+        "- Follow the natural flow of the street/path composition",
+        ""
+      ].join("\n");
+    } else if (backgroundInfo.composition.includes("left side")) {
+      compositionInstructions = [
+        "COMPOSITION PLACEMENT:",
+        "- Position the runner on the LEFT SIDE of the frame where the path/street is",
+        "- Do not center the runner - they should be running along the left pathway",
+        "- Follow the natural flow of the street/path composition",
+        ""
+      ].join("\n");
+    }
+  }
+
+  // Religious wear preservation with time period context
+  const religiousWearInstructions = [
+    "RELIGIOUS AND CULTURAL WEAR PRESERVATION:",
+    "If the subject wears religious or cultural head covering (hijab, turban, yarmulke, etc.):",
+    "- KEEP IT EXACTLY AS WORN regardless of time period",
+    "- Religious wear transcends time periods and must be respected",
+    backgroundInfo.timePeriod === "past" ? 
+      "- Apply the same color treatment (sepia/B&W) to religious wear" : "",
+    backgroundInfo.timePeriod === "future" ? 
+      "- Religious wear remains traditional even in futuristic settings" : "",
+    "- Never remove or alter religious/cultural clothing",
+    "- The athletic wear below should still be gender-neutral",
+    ""
+  ].filter(Boolean).join("\n");
+
   const promptLines = [
-    "Photoreal multi-image fusion for Amsterdam Marathon 2025.",
+    "Photoreal multi-image fusion for Amsterdam Marathon through time.",
     "",
+    
+    // Shadow analysis instruction - MOVED TO TOP
+    "FIRST PRIORITY - ANALYZE BACKGROUND SHADOWS:",
+    "- Identify shadow direction from existing people/objects in background",
+    "- Note shadow SOFTNESS and diffusion level",
+    "- Observe how shadows blend with the ground texture",
+    "- Notice that real shadows are SOFT and GRADUAL, never harsh",
+    "- Runner must have equally SOFT, BLENDED shadows",
+    "",
+    
+    // Time period context
+    `TIME PERIOD: ${backgroundInfo.era || "Present day"}`,
+    `Setting: ${backgroundInfo.timePeriod === "past" ? "Historical" : 
+               backgroundInfo.timePeriod === "future" ? "Futuristic" : "Contemporary"} Amsterdam`,
+    "",
+    
+    // Add color treatment instructions at the very beginning if needed
+    colorTreatmentInstructions,
+    
+    // CRITICAL NO BIB INSTRUCTION
     "CRITICAL INSTRUCTION - NO RACE BIBS:",
     "- DO NOT add any bib number, race number, or participant number",
     "- The runner's chest area must be completely clear of any numbers or race identifiers",
-    "- Athletic wear should be plain or have only brand logos",
+    backgroundInfo.timePeriod === "past" ? 
+      "- Historical runners did not wear race bibs like modern races" : "",
     "- ABSOLUTELY NO numerical identifiers on the clothing",
-    "- If you see any number on the chest area, remove it",
     "",
+    
+    // Identity preservation
     "FIRST image: person. Preserve identity exactly: face, skin tone, facial hair, hair texture/coverage, body shape, height proportions, hands, and any visible distinguishing features.",
     "",
-    genderInstruction,
+    
+    // Apply filter to preserved features if needed
+    backgroundInfo.colorTreatment?.includes("sepia") ? 
+      "Apply sepia/vintage filter to ALL preserved features to match background aesthetics." : "",
+    backgroundInfo.colorTreatment?.includes("black") ? 
+      "Convert ALL preserved features to black and white/grayscale to match background." : "",
     "",
+    
+    // Gender-aware instruction for BODY ONLY
+    "BODY AND FACIAL FEATURES:",
+    genderInstruction,
+    "NOTE: Clothing should be gender-neutral athletic wear regardless of gender selection.",
+    "",
+    
+    // Religious wear preservation
+    religiousWearInstructions,
+    
+    // GENDER-NEUTRAL period-appropriate clothing
+    "CRITICAL CLOTHING INSTRUCTION:",
+    "ALL runners wear the SAME STYLE of gender-neutral athletic clothing.",
+    "Do not vary clothing based on gender - use unified athletic wear for everyone.",
+    "",
+    ...periodClothing,
+    "",
+    
+    // Add composition instructions if needed
+    compositionInstructions,
+    
+    // CRITICAL SCALE REQUIREMENTS
     "CRITICAL SCALE REQUIREMENTS:",
     "- The runner MUST be at REALISTIC HUMAN SCALE relative to the background",
     "- If there are buildings, the person should be appropriately small compared to them",
     "- If there are other people visible, the runner must be similar size to them",
-    "- Check perspective: further from camera = smaller, closer = larger",
-    "- A person should be about 1/3 to 1/4 the height of a typical building story",
-    "- In wide city squares, people appear quite small relative to the space",
+    backgroundInfo.timePeriod === "past" ? 
+      "- Match the scale of any historical figures in the scene" : "",
     "- NEVER make the person unnaturally large or dominant in the frame",
     "",
-    "If the subject wears a hijab, turban, yarmulke, or any religious/cultural head covering, KEEP IT UNCHANGED.",
-    "If the subject wears eyeglasses in the FIRST image, KEEP those exact glasses.",
+    
+    // Eyewear handling
+    "If the subject wears eyeglasses in the FIRST image:",
+    backgroundInfo.timePeriod === "past" ? 
+      "- Adapt glasses to period-appropriate style (round wire frames, pince-nez)" : 
+    backgroundInfo.timePeriod === "future" ? 
+      "- Make glasses subtly futuristic (thin frames, smart glass appearance)" : 
+      "- Keep modern glasses unchanged",
+    "If the subject is NOT wearing eyeglasses, do not add any.",
     "",
-    "If the subject is NOT wearing eyeglasses in the FIRST image, do not add any.",
-    "Do not invent new accessories not present in the FIRST image.",
+    
+    // Mobility aids with time period
+    "If the subject uses a mobility aid, adapt it to the time period while maintaining functionality.",
     "",
-    "If the subject uses a mobility aid, KEEP it exactly and maintain natural usage posture.",
+    
+    // Running pose for time period
+    "RUNNING POSE AND FORM:",
+    backgroundInfo.timePeriod === "past" ? 
+      "- More upright running posture typical of early 1900s athletics" : 
+    backgroundInfo.timePeriod === "future" ? 
+      "- Efficient, biomechanically optimized running form" : 
+      "- Modern marathon running form",
+    "- Natural movement for the era",
+    "- Arms and legs positioned appropriately for running",
+    "- Same running form regardless of gender",
     "",
-    "Transform into Amsterdam Marathon runner WITHOUT any race bib:",
-    "- Plain athletic shirt/top with NO numbers, NO bib, NO race identifiers",
-    "- The chest area must remain completely clear and unobstructed",
-    "- Breathable athletic wear appropriate for the gender selection",
-    "- Running shoes suitable for marathon",
-    "- Dynamic RUNNING pose, mid-stride like a marathon runner",
-    "- Natural running form: forward lean, arms pumping, one foot contacting ground",
-    "- Remember: This is a training run photo, NOT a race photo, so NO BIBS",
-    "",
+    
+    // Background integration
     "SECOND image: " + backgroundInfo.description,
-    "Integrate the runner seamlessly into the Amsterdam marathon route.",
-    "Place runner at appropriate distance based on background perspective.",
-    "This should look like a training or practice run, not an official race.",
+    "OBSERVE: Note all shadows from existing people/objects in the background.",
+    "MATCH: Runner's shadow must match the same angle, length, and intensity.",
+    `Integrate the runner seamlessly into the ${backgroundInfo.era || "modern"} Amsterdam setting.`,
+    backgroundInfo.composition ? 
+      `Place runner on the ${backgroundInfo.composition.includes('right') ? 'RIGHT' : 
+        backgroundInfo.composition.includes('left') ? 'LEFT' : 'CENTER'} following the path/street location.` : 
+      "Place runner at appropriate distance based on background perspective.",
+    "Runner MUST have ground contact shadow matching other people in scene.",
     "",
+    
+    // PERSPECTIVE AND COMPOSITION
     "PERSPECTIVE AND COMPOSITION:",
     "- Match the camera angle and height of the background photo",
     "- If background is shot from ground level, keep runner at ground level",
     "- Maintain proper depth of field - slightly blur if far away",
     "- The runner should occupy 10-20% of frame height in city squares",
     "- In park paths, runner can be 30-40% of frame height if closer to camera",
+    backgroundInfo.composition?.includes("side") ? 
+      "- Position runner along the actual path/street, not in the center of frame" : "",
     "",
+    
+    // CRITICAL SHADOW GENERATION
+    "CRITICAL SHADOW AND GROUNDING REQUIREMENTS:",
+    "THE RUNNER MUST HAVE SOFT, NATURAL CONTACT SHADOWS:",
+    "- Generate a SOFT, DIFFUSED shadow beneath the runner's feet",
+    "- Shadow edges must be BLURRED and GRADUAL, not sharp or harsh",
+    "- The shadow should BLEND smoothly into the cobblestones/ground texture",
+    "- NO hard edges - shadow must have soft, feathered boundaries",
+    "- Shadow opacity: semi-transparent, not solid black",
+    "- Darkest point directly under feet (60-70% opacity)",
+    "- Gradually fades outward with soft edges (20-30% opacity at edges)",
+    "- Match the SOFTNESS of shadows from other people in the scene",
+    "- On cobblestones: shadow should follow surface undulations naturally",
+    "- Contact shadow is essential but must look atmospheric and soft",
+    backgroundInfo.colorTreatment?.includes("sepia") ? 
+      "- Soft brown/sepia shadow tones, never harsh black" : 
+    backgroundInfo.colorTreatment?.includes("black") ?
+      "- Soft gray shadows matching the monochrome atmosphere" : 
+      "- Natural soft shadow color matching ambient lighting",
+    "",
+    "GROUND INTEGRATION WITH SOFT SHADOWS:",
+    "- Runner's feet must appear to make contact with the ground surface",
+    "- Shadow should be SOFT and ATMOSPHERIC, like morning mist",
+    "- On cobblestones: shadow follows surface texture but stays SOFT",
+    "- Shadow blends into gaps between stones naturally",
+    "- Weight distribution shown through subtle shadow gradients",
+    "- One foot shows ground contact with gentle shadow pooling",
+    "- Avoid any harsh black outlines or sharp shadow edges",
+    "- Think 'overcast day shadows' not 'harsh sunlight shadows'",
+    "",
+    
+    // Lighting matching
     "Match lighting to background: " + backgroundInfo.lighting,
-    "Cast appropriate ground shadows matching scene direction.",
-    "Shadow size must match the person's scale in the scene.",
-    "Add natural reflections and color temperature matching.",
+    
+    // Time-appropriate atmosphere
+    backgroundInfo.timePeriod === "past" ? [
+      "HISTORICAL ATMOSPHERE:",
+      "- Other people in scene wearing period-appropriate 1900s clothing",
+      "- No modern elements should be visible on the runner",
+      "- Match the historical photography style completely",
+      "- All runners (if multiple) wear similar gender-neutral athletic attire",
+      ""
+    ].join("\n") : 
+    backgroundInfo.timePeriod === "future" ? [
+      "FUTURISTIC ATMOSPHERE:",
+      "- Advanced technology visible but not overwhelming",
+      "- Clean, sleek aesthetic matching 2050s vision",
+      "- Other runners in similar gender-neutral futuristic athletic wear if present",
+      ""
+    ].join("\n") : "",
+    
+    // Final reminders
+    "FINAL INTEGRATION CHECK:",
+    `- Runner must look like they belong in ${backgroundInfo.era || "2025"}`,
+    "- Clothing must be historically/temporally accurate AND gender-neutral",
+    "- Same athletic wear style for all genders",
+    "- Religious/cultural wear preserved if present",
+    "- NO RACE NUMBERS OR BIBS in any time period",
+    backgroundInfo.colorTreatment && !backgroundInfo.colorTreatment.includes("full color") ?
+      "- Color treatment (sepia/B&W) applied to entire person" : "",
+    "- Natural integration with no anachronistic elements",
     "",
-    "Add marathon atmosphere but as a TRAINING RUN:",
-    "- Other casual runners in background if appropriate (also no bibs)",
-    "- Park or city atmosphere, not race day atmosphere",
-    "- NO race numbers, NO bibs, NO official race markers",
-    "Ensure photorealistic integration with no cutout edges.",
+    "FINAL SHADOW CHECK - CRITICAL:",
+    "- VERIFY the runner has a SOFT, DIFFUSED shadow on the ground",
+    "- Shadow must have FEATHERED, GRADUAL edges - no harsh lines",
+    "- Shadow should BLEND naturally into the ground surface",
+    "- Check that shadow opacity varies (darker center, lighter edges)",
+    "- Ensure shadow matches the SOFTNESS of other shadows in scene",
+    "- Shadow must appear atmospheric and natural, not painted on",
+    "- Ground contact visible but subtle through soft shadowing",
     "",
-    "FINAL REMINDER: This must look like a training/practice run photo,",
-    "NOT an official race photo. NO BIBS OR RACE NUMBERS anywhere."
+    "REMINDER: Use the same gender-neutral athletic clothing regardless of the gender parameter.",
+    "The gender parameter only affects body/facial feature preservation, NOT clothing style."
   ].filter(Boolean);
 
   return promptLines.join("\n");
 }
-
 // Process generation function for queue
 async function processGeneration(fileBuffer, mimetype, { backgroundId, gender }, kioskId) {
   const sessionId = uuidv4();

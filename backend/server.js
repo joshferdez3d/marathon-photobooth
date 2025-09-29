@@ -18,9 +18,17 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Initialize Gemini
+// Initialize Gemini (low temperature to improve consistency)
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-image-preview" });
+const model = genAI.getGenerativeModel({
+  model: "gemini-2.5-flash-image-preview",
+  generationConfig: {
+    temperature: 0.28,
+    topP: 0.9,
+    topK: 32
+    // candidateCount intentionally left default (1) to avoid "Multiple candidates not enabled" errors
+  }
+});
 
 // Session tracking for kiosks
 const activeSessions = new Map();
@@ -32,16 +40,16 @@ const kioskStats = {
 };
 
 // Processing queue - limit concurrent Gemini API calls
-const generationQueue = new PQueue({ 
-  concurrency: 2, // Process 2 images at once
-  interval: 1000, // 1 second interval
-  intervalCap: 3  // Max 3 per second
+const generationQueue = new PQueue({
+  concurrency: 2,    // Process 2 images at once
+  interval: 1000,    // 1 second bucket
+  intervalCap: 3     // Max 3 per second
 });
 
 // Rate limiter per kiosk
 const kioskLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute window
-  max: 5, // 5 requests per minute per kiosk
+  max: 5,              // 5 requests per minute per kiosk
   keyGenerator: (req) => req.headers['x-kiosk-id'] || 'unknown',
   message: 'Too many requests from this kiosk, please wait',
   standardHeaders: true,
@@ -57,15 +65,15 @@ app.use('/overlays', express.static('overlays'));
 
 // Multer setup
 const storage = multer.memoryStorage();
-const upload = multer({ 
+const upload = multer({
   storage,
   limits: { fileSize: 10 * 1024 * 1024 }
 });
 
 // Ensure directories exist
 async function ensureDir(dir) {
-  try { 
-    await fs.mkdir(path.join(__dirname, dir), { recursive: true }); 
+  try {
+    await fs.mkdir(path.join(__dirname, dir), { recursive: true });
   } catch {}
 }
 
@@ -76,7 +84,15 @@ await ensureDir('backgrounds');
 await ensureDir('overlays');
 await ensureDir('logs');
 
-// Your existing helper functions
+// Helpers
+function inferMimeFromFilename(file) {
+  const ext = path.extname(file).toLowerCase();
+  if (ext === '.png') return 'image/png';
+  if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg';
+  if (ext === '.webp') return 'image/webp';
+  return 'image/png';
+}
+
 async function fileToInlineData(buffer, mimeType = "image/jpeg") {
   const b64 = buffer.toString("base64");
   return { inlineData: { mimeType, data: b64 } };
@@ -85,7 +101,7 @@ async function fileToInlineData(buffer, mimeType = "image/jpeg") {
 async function applyOverlay(generatedImageBuffer) {
   try {
     const overlayPath = path.join(__dirname, 'overlays', 'amsterdam-marathon-2025.png');
-    
+
     try {
       await fs.access(overlayPath);
     } catch {
@@ -94,7 +110,7 @@ async function applyOverlay(generatedImageBuffer) {
     }
 
     const generatedMetadata = await sharp(generatedImageBuffer).metadata();
-    
+
     const overlayBuffer = await sharp(overlayPath)
       .resize(generatedMetadata.width, generatedMetadata.height, {
         fit: 'fill',
@@ -119,8 +135,102 @@ async function applyOverlay(generatedImageBuffer) {
   }
 }
 
-// Enhanced BACKGROUNDS configuration with time period
+// --- BACKGROUNDS (unchanged from your version) ---
 const BACKGROUNDS = {
+  "amsterdam750-flowermarket": {
+    name: "Historic Flower Market",
+    file: "Amsterdam750-FlowerMarket.png",
+    description: "Historic Amsterdam canal with traditional Dutch houses, flower market scene",
+    lighting: "overcast Northern European light, soft shadows",
+    colorTreatment: "Hand painted color with rich historical tones",
+    composition: "canal on left, street path on right side",
+    timePeriod: "past",
+    era: "early 1900s",
+    pose: "running" // <-- NEW: post-race walking only for this background
+  },
+  "amsterdam750-goldenage": {
+    name: "Golden Age Harbor",
+    file: "Amsterdam750-GoldenAge1.png",
+    description: "Sepia-toned Amsterdam harbor from the Golden Age",
+    lighting: "soft, diffused historical lighting",
+    colorTreatment: "sepia vintage filter with muted browns and yellows",
+    composition: "harbor on left, cobblestone street on right",
+    timePeriod: "past",
+    era: "1600s-1700s",
+    pose: "running" // <-- NEW: post-race walking only for this background
+
+  },
+  "amsterdam750-rijksmuseum": {
+    name: "Rijksmuseum Celebration",
+    file: "Amsterdam750-Rijksmuseum3.png",
+    description: "Modern crowds at the Rijksmuseum",
+    lighting: "bright daylight, natural shadows",
+    colorTreatment: "full color modern photography",
+    composition: "museum entrance centered, crowds on sides",
+    timePeriod: "present",
+    era: "2025",
+    pose: "running" // <-- NEW: post-race walking only for this background
+
+  },
+  "future-solarbridge": {
+    name: "Solar Bridge Run",
+    file: "FutureofRunning-SolarBridge2.png",
+    description: "Futuristic bridge with solar panels and drone spectators",
+    lighting: "bright futuristic lighting with LED accents",
+    colorTreatment: "full color with blue-cyan tech tones",
+    composition: "bridge pathway centered",
+    timePeriod: "future",
+    era: "2050s",
+    pose: "running" // <-- NEW: post-race walking only for this background
+
+  },
+  "future-biodomes": {
+    name: "Canal Biodomes",
+    file: "FutureofRunningBiodomes2.png",
+    description: "Future Amsterdam with biodome structures along canals",
+    lighting: "soft bioluminescent and natural light mix",
+    colorTreatment: "full color with green-blue environmental tones",
+    composition: "canal path on right, biodomes on left",
+    timePeriod: "future",
+    era: "2050s",
+    pose: "running" // <-- NEW: post-race walking only for this background
+
+  },
+  "future-smartfinish": {
+    name: "Smart Stadium Finish",
+    file: "FututeofRunning-SmartFinish5.png", // keep typo if filename is exactly this
+    description: "High-tech stadium with robotic assistants and holographic finish line",
+    lighting: "bright stadium lighting with holographic effects",
+    colorTreatment: "full color vibrant with neon accents",
+    composition: "finish line centered, stadium surroundings",
+    timePeriod: "future",
+    era: "2050s",
+    pose: "walking" // <-- NEW: post-race walking only for this background
+
+  },
+  "tcs50-firstmarathon": {
+    name: "The First Marathon",
+    file: "TCS50-FirstMarathon.png",
+    description: "1970s Olympic Stadium finish line",
+    lighting: "vintage 70s photography lighting",
+    colorTreatment: "slightly desaturated 70s color palette",
+    composition: "track finish line centered",
+    timePeriod: "past",
+    era: "1970s",
+    pose: "walking" // <-- NEW: post-race walking only for this background
+  },
+  "tcs50-iamsterdam": {
+    name: "I Amsterdam",
+    file: "TCS50-Iamsterdam.png",
+    description: "Modern marathon at the iconic I Amsterdam sign",
+    lighting: "bright modern daylight",
+    colorTreatment: "full color contemporary photography",
+    composition: "sign and runners centered",
+    timePeriod: "present",
+    era: "2025",
+    pose: "running" // <-- NEW: post-race walking only for this background
+
+  },
   "amsterdam-canal": {
     name: "Amsterdam Canal - Historic",
     file: "amsterdam-canal.png",
@@ -163,363 +273,192 @@ const BACKGROUNDS = {
   }
 };
 
-// Helper function to get period-appropriate GENDER-NEUTRAL athletic wear
+// Period-appropriate, gender-neutral clothing
 function getPeriodAppropriateClothing(timePeriod, era) {
   const clothingByPeriod = {
     past: [
       "HISTORICAL ATHLETIC ATTIRE (Early 1900s) - GENDER NEUTRAL:",
-      "- Simple white or cream cotton athletic shirt (not too fitted, not too loose)",
-      "- Dark colored knee-length athletic shorts or knickerbockers (navy, black, or brown)",
-      "- Long dark socks pulled up to just below the knees",
-      "- Simple canvas or leather lace-up athletic shoes/plimsolls",
-      "- Natural fabrics only (cotton, wool, linen) - no synthetic materials",
-      "- Modest, practical fit appropriate for 1900s athletics",
-      "- No modern logos, text, or branding",
-      "- Overall appearance of an early Olympic athlete or physical culture enthusiast"
+      "- Simple white/cream cotton athletic shirt",
+      "- Dark knee-length athletic shorts/knickerbockers",
+      "- Long dark socks; canvas/leather lace-up shoes",
+      "- Natural fabrics; no modern logos"
     ],
     present: [
       "MODERN ATHLETIC ATTIRE (2025) - GENDER NEUTRAL:",
-      "- Contemporary moisture-wicking running t-shirt in solid athletic colors",
-      "- Modern running shorts (mid-thigh length, not too short or long)",
-      "- Current model running shoes (subtle design, no excessive branding)",
-      "- Optional: simple running watch or fitness tracker",
-      "- Technical athletic fabrics with natural drape",
-      "- Comfortable, functional fit suitable for marathon running",
-      "- Clean, minimalist athletic aesthetic"
+      "- Moisture-wicking running t-shirt (solid athletic color)",
+      "- Mid-thigh modern running shorts",
+      "- Current running shoes (subtle design, no heavy branding)",
+      "- Optional simple running watch"
     ],
     future: [
       "FUTURISTIC ATHLETIC ATTIRE (2050s) - GENDER NEUTRAL:",
-      "- Sleek bio-responsive athletic top with subtle geometric patterns",
-      "- Streamlined running shorts with integrated smart fabric technology",
-      "- Advanced cushioning running shoes with minimal, elegant design",
-      "- Subtle holographic or bioluminescent accent lines (not overwhelming)",
-      "- Matte or subtly iridescent fabric finishes",
-      "- Form-following (not form-fitting) silhouette",
-      "- Clean, minimalist future aesthetic without excessive tech elements",
-      "- Unified, genderless design language"
+      "- Sleek bio-responsive athletic top (subtle geometric patterns)",
+      "- Streamlined shorts with smart fabric",
+      "- Advanced cushioning shoes; minimal design",
+      "- Subtle holographic/bioluminescent accents"
     ]
   };
-
   return clothingByPeriod[timePeriod] || clothingByPeriod.present;
 }
 
-// Enhanced prompt generation function with gender-neutral clothing
-function generateGenderAwarePrompt(gender, backgroundInfo) {
-  // Gender instructions for body/feature preservation ONLY, not clothing
-  const genderSpecific = {
-    male: "Preserve masculine facial features, body build, and proportions from the original photo.",
-    female: "Preserve feminine facial features, body build, and proportions from the original photo.",
-    "non-binary": "Preserve the exact facial features, body build, and proportions from the original photo.",
-    trans: "Respectfully preserve the facial features, body build, and proportions from the original photo."
-  };
+// NEW: Streamlined, parameterized prompt builder
+function generateGenderAwarePrompt(gender, backgroundInfo, prominence = "medium") {
+  const genderSpecific = {
+    male: "Preserve masculine facial features and body proportions from the input photo.",
+    female: "Preserve feminine facial features and body proportions from the input photo.",
+    "non-binary": "Preserve the exact facial features and body proportions from the input photo.",
+    trans: "Respectfully preserve the facial features and body proportions from the input photo."
+  };
+  const genderInstruction = genderSpecific[gender] || genderSpecific["non-binary"];
 
-  const genderInstruction = genderSpecific[gender] || genderSpecific["non-binary"];
+  const periodClothing = getPeriodAppropriateClothing(
+    backgroundInfo.timePeriod || "present",
+    backgroundInfo.era || "2025"
+  );
 
-  // Get period-appropriate GENDER-NEUTRAL clothing
-  const periodClothing = getPeriodAppropriateClothing(
-    backgroundInfo.timePeriod || "present",
-    backgroundInfo.era || "2025"
-  );
+  let colorTreatmentInstruction = "Use natural, full-color rendering consistent with the background lighting.";
+  if (backgroundInfo.colorTreatment) {
+    const ct = backgroundInfo.colorTreatment.toLowerCase();
+    if (ct.includes("sepia") || ct.includes("vintage")) {
+      // --- CRITICAL FIX: Explicitly apply sepia to the face too ---
+      colorTreatmentInstruction = "Apply a unified SEPIA tone to the generated person **(including the face)**; warm browns/yellows, muted saturation, match background contrast and grain.";
+    } else if (ct.includes("black") || ct.includes("monochrome")) {
+      // --- CRITICAL FIX: Explicitly apply B&W to the face too ---
+      colorTreatmentInstruction = "Convert the generated person to BLACK-AND-WHITE (grayscale) **(including the face)**; match background contrast and grain.";
+    }
+  }
 
-  // Determine color treatment instructions
-  let colorTreatmentInstructions = "";
-  if (backgroundInfo.colorTreatment) {
-    if (backgroundInfo.colorTreatment.includes("sepia") || backgroundInfo.colorTreatment.includes("vintage")) {
-      colorTreatmentInstructions = [
-        "CRITICAL COLOR MATCHING:",
-        "- Apply SEPIA TONE to the entire generated person to match the vintage background filter",
-        "- Convert all colors to warm browns, yellows, and muted earth tones",
-        "- NO vibrant or saturated colors - everything must have vintage/antique coloring",
-        "- Athletic wear should appear in muted, desaturated tones matching the sepia filter",
-        "- Skin tones should have the warm, golden-brown cast of sepia photography",
-        "- The person must look like they belong in the same vintage photograph",
-        ""
-      ].join("\n");
-    } else if (backgroundInfo.colorTreatment.includes("black and white") || backgroundInfo.colorTreatment.includes("monochrome")) {
-      colorTreatmentInstructions = [
-        "CRITICAL COLOR MATCHING:",
-        "- Convert the entire person to BLACK AND WHITE/GRAYSCALE",
-        "- NO color should remain on the person - full monochrome treatment",
-        "- Match the contrast levels of the background",
-        "- Athletic wear appears in shades of gray",
-        "- The person must look like part of the same black and white photograph",
-        ""
-      ].join("\n");
-    }
-  }
+  const compositionNote = "Identify the primary path/road/track in the background. Place the runner **directly in the center of this path** to ensure they appear to be running on it correctly.";
 
-  // Determine composition instructions
-  let compositionInstructions = "";
-  if (backgroundInfo.composition) {
-    if (backgroundInfo.composition.includes("right side")) {
-      compositionInstructions = [
-        "COMPOSITION PLACEMENT:",
-        "- Position the runner on the RIGHT SIDE of the frame where the path/street is",
-        "- Do not center the runner - they should be running along the right pathway",
-        "- Follow the natural flow of the street/path composition",
-        ""
-      ].join("\n");
-    } else if (backgroundInfo.composition.includes("left side")) {
-      compositionInstructions = [
-        "COMPOSITION PLACEMENT:",
-        "- Position the runner on the LEFT SIDE of the frame where the path/street is",
-        "- Do not center the runner - they should be running along the left pathway",
-        "- Follow the natural flow of the street/path composition",
-        ""
-      ].join("\n");
-    }
-  }
+  // --- REFINED AGAIN: Adjusted prominence targets for further placement ---
+  const prominenceTargets = {
+    low: "Place the runner in the **far mid-ground** of the identified path, appearing naturally smaller due to perspective. They should be clearly visible but not prominent.",
+    medium: "Place the runner in the **mid-ground, distinctly further back from the immediate foreground**, of the identified path for realistic scale and environmental integration.",
+    high: "Place the runner in the **near mid-ground, but still ensuring sufficient distance from the camera for realistic environmental context**, of the identified path. They should appear naturally larger, but not oversized or portrait-like."
+  };
+  const placementInstruction = prominenceTargets[prominence] || prominenceTargets.medium;
 
-  // Religious wear preservation with time period context
-  const religiousWearInstructions = [
-    "RELIGIOUS AND CULTURAL WEAR PRESERVATION:",
-    "If the subject wears religious or cultural head covering (hijab, turban, yarmulke, etc.):",
-    "- KEEP IT EXACTLY AS WORN regardless of time period",
-    "- Religious wear transcends time periods and must be respected",
-    backgroundInfo.timePeriod === "past" ? 
-      "- Apply the same color treatment (sepia/B&W) to religious wear" : "",
-    backgroundInfo.timePeriod === "future" ? 
-      "- Religious wear remains traditional even in futuristic settings" : "",
-    "- Never remove or alter religious/cultural clothing",
-    "- The athletic wear below should still be gender-neutral",
-    ""
-  ].filter(Boolean).join("\n");
 
-  const promptLines = [
-    "Photoreal multi-image fusion for Amsterdam Marathon through time.",
-    "",
-    
-    // Shadow analysis instruction - MOVED TO TOP
-    "FIRST PRIORITY - ANALYZE BACKGROUND SHADOWS:",
-    "- Identify shadow direction from existing people/objects in background",
-    "- Note shadow SOFTNESS and diffusion level",
-    "- Observe how shadows blend with the ground texture",
-    "- Notice that real shadows are SOFT and GRADUAL, never harsh",
-    "- Runner must have equally SOFT, BLENDED shadows",
-    "",
-    
-    // Time period context
-    `TIME PERIOD: ${backgroundInfo.era || "Present day"}`,
-    `Setting: ${backgroundInfo.timePeriod === "past" ? "Historical" : 
-               backgroundInfo.timePeriod === "future" ? "Futuristic" : "Contemporary"} Amsterdam`,
-    "",
-    
-    // Add color treatment instructions at the very beginning if needed
-    colorTreatmentInstructions,
-    
-    // CRITICAL NO BIB INSTRUCTION
-    "CRITICAL INSTRUCTION - NO RACE BIBS:",
-    "- DO NOT add any bib number, race number, or participant number",
-    "- The runner's chest area must be completely clear of any numbers or race identifiers",
-    backgroundInfo.timePeriod === "past" ? 
-      "- Historical runners did not wear race bibs like modern races" : "",
-    "- ABSOLUTELY NO numerical identifiers on the clothing",
-    "",
-    
-    // Identity preservation
-    "FIRST image: person. Preserve identity exactly: face, skin tone, facial hair, hair texture/coverage, body shape, height proportions, hands, and any visible distinguishing features.",
-    "",
-    
-    // Apply filter to preserved features if needed
-    backgroundInfo.colorTreatment?.includes("sepia") ? 
-      "Apply sepia/vintage filter to ALL preserved features to match background aesthetics." : "",
-    backgroundInfo.colorTreatment?.includes("black") ? 
-      "Convert ALL preserved features to black and white/grayscale to match background." : "",
-    "",
-    
-    // Gender-aware instruction for BODY ONLY
-    "BODY AND FACIAL FEATURES:",
-    genderInstruction,
-    "NOTE: Clothing should be gender-neutral athletic wear regardless of gender selection.",
-    "",
-    
-    // Religious wear preservation
-    religiousWearInstructions,
-    
-    // GENDER-NEUTRAL period-appropriate clothing
-    "CRITICAL CLOTHING INSTRUCTION:",
-    "ALL runners wear the SAME STYLE of gender-neutral athletic clothing.",
-    "Do not vary clothing based on gender - use unified athletic wear for everyone.",
-    "",
-    ...periodClothing,
-    "",
-    
-    // Add composition instructions if needed
-    compositionInstructions,
-    
-    // CRITICAL SCALE REQUIREMENTS
-    "CRITICAL SCALE REQUIREMENTS:",
-    "- The runner MUST be at REALISTIC HUMAN SCALE relative to the background",
-    "- If there are buildings, the person should be appropriately small compared to them",
-    "- If there are other people visible, the runner must be similar size to them",
-    backgroundInfo.timePeriod === "past" ? 
-      "- Match the scale of any historical figures in the scene" : "",
-    "- NEVER make the person unnaturally large or dominant in the frame",
-    "",
-    
-    // Eyewear handling
-    "If the subject wears eyeglasses in the FIRST image:",
-    backgroundInfo.timePeriod === "past" ? 
-      "- Adapt glasses to period-appropriate style (round wire frames, pince-nez)" : 
-    backgroundInfo.timePeriod === "future" ? 
-      "- Make glasses subtly futuristic (thin frames, smart glass appearance)" : 
-      "- Keep modern glasses unchanged",
-    "If the subject is NOT wearing eyeglasses, do not add any.",
-    "",
-    
-    // Mobility aids with time period
-    "If the subject uses a mobility aid, adapt it to the time period while maintaining functionality.",
-    "",
-    
-    // Running pose for time period
-    "RUNNING POSE AND FORM:",
-    backgroundInfo.timePeriod === "past" ? 
-      "- More upright running posture typical of early 1900s athletics" : 
-    backgroundInfo.timePeriod === "future" ? 
-      "- Efficient, biomechanically optimized running form" : 
-      "- Modern marathon running form",
-    "- Natural movement for the era",
-    "- Arms and legs positioned appropriately for running",
-    "- Same running form regardless of gender",
-    "",
-    
-    // Background integration
-    "SECOND image: " + backgroundInfo.description,
-    "OBSERVE: Note all shadows from existing people/objects in the background.",
-    "MATCH: Runner's shadow must match the same angle, length, and intensity.",
-    `Integrate the runner seamlessly into the ${backgroundInfo.era || "modern"} Amsterdam setting.`,
-    backgroundInfo.composition ? 
-      `Place runner on the ${backgroundInfo.composition.includes('right') ? 'RIGHT' : 
-        backgroundInfo.composition.includes('left') ? 'LEFT' : 'CENTER'} following the path/street location.` : 
-      "Place runner at appropriate distance based on background perspective.",
-    "Runner MUST have ground contact shadow matching other people in scene.",
-    "",
-    
-    // PERSPECTIVE AND COMPOSITION
-    "PERSPECTIVE AND COMPOSITION:",
-    "- Match the camera angle and height of the background photo",
-    "- If background is shot from ground level, keep runner at ground level",
-    "- Maintain proper depth of field - slightly blur if far away",
-    "- The runner should occupy 10-20% of frame height in city squares",
-    "- In park paths, runner can be 30-40% of frame height if closer to camera",
-    backgroundInfo.composition?.includes("side") ? 
-      "- Position runner along the actual path/street, not in the center of frame" : "",
-    "",
-    
-    // CRITICAL SHADOW GENERATION
-    "CRITICAL SHADOW AND GROUNDING REQUIREMENTS:",
-    "THE RUNNER MUST HAVE SOFT, NATURAL CONTACT SHADOWS:",
-    "- Generate a SOFT, DIFFUSED shadow beneath the runner's feet",
-    "- Shadow edges must be BLURRED and GRADUAL, not sharp or harsh",
-    "- The shadow should BLEND smoothly into the cobblestones/ground texture",
-    "- NO hard edges - shadow must have soft, feathered boundaries",
-    "- Shadow opacity: semi-transparent, not solid black",
-    "- Darkest point directly under feet (60-70% opacity)",
-    "- Gradually fades outward with soft edges (20-30% opacity at edges)",
-    "- Match the SOFTNESS of shadows from other people in the scene",
-    "- On cobblestones: shadow should follow surface undulations naturally",
-    "- Contact shadow is essential but must look atmospheric and soft",
-    backgroundInfo.colorTreatment?.includes("sepia") ? 
-      "- Soft brown/sepia shadow tones, never harsh black" : 
-    backgroundInfo.colorTreatment?.includes("black") ?
-      "- Soft gray shadows matching the monochrome atmosphere" : 
-      "- Natural soft shadow color matching ambient lighting",
-    "",
-    "GROUND INTEGRATION WITH SOFT SHADOWS:",
-    "- Runner's feet must appear to make contact with the ground surface",
-    "- Shadow should be SOFT and ATMOSPHERIC, like morning mist",
-    "- On cobblestones: shadow follows surface texture but stays SOFT",
-    "- Shadow blends into gaps between stones naturally",
-    "- Weight distribution shown through subtle shadow gradients",
-    "- One foot shows ground contact with gentle shadow pooling",
-    "- Avoid any harsh black outlines or sharp shadow edges",
-    "- Think 'overcast day shadows' not 'harsh sunlight shadows'",
-    "",
-    
-    // Lighting matching
-    "Match lighting to background: " + backgroundInfo.lighting,
-    
-    // Time-appropriate atmosphere
-    backgroundInfo.timePeriod === "past" ? [
-      "HISTORICAL ATMOSPHERE:",
-      "- Other people in scene wearing period-appropriate 1900s clothing",
-      "- No modern elements should be visible on the runner",
-      "- Match the historical photography style completely",
-      "- All runners (if multiple) wear similar gender-neutral athletic attire",
-      ""
-    ].join("\n") : 
-    backgroundInfo.timePeriod === "future" ? [
-      "FUTURISTIC ATMOSPHERE:",
-      "- Advanced technology visible but not overwhelming",
-      "- Clean, sleek aesthetic matching 2050s vision",
-      "- Other runners in similar gender-neutral futuristic athletic wear if present",
-      ""
-    ].join("\n") : "",
-    
-    // Final reminders
-    "FINAL INTEGRATION CHECK:",
-    `- Runner must look like they belong in ${backgroundInfo.era || "2025"}`,
-    "- Clothing must be historically/temporally accurate AND gender-neutral",
-    "- Same athletic wear style for all genders",
-    "- Religious/cultural wear preserved if present",
-    "- NO RACE NUMBERS OR BIBS in any time period",
-    backgroundInfo.colorTreatment && !backgroundInfo.colorTreatment.includes("full color") ?
-      "- Color treatment (sepia/B&W) applied to entire person" : "",
-    "- Natural integration with no anachronistic elements",
-    "",
-    "FINAL SHADOW CHECK - CRITICAL:",
-    "- VERIFY the runner has a SOFT, DIFFUSED shadow on the ground",
-    "- Shadow must have FEATHERED, GRADUAL edges - no harsh lines",
-    "- Shadow should BLEND naturally into the ground surface",
-    "- Check that shadow opacity varies (darker center, lighter edges)",
-    "- Ensure shadow matches the SOFTNESS of other shadows in scene",
-    "- Shadow must appear atmospheric and natural, not painted on",
-    "- Ground contact visible but subtle through soft shadowing",
-    "",
-    "REMINDER: Use the same gender-neutral athletic clothing regardless of the gender parameter.",
-    "The gender parameter only affects body/facial feature preservation, NOT clothing style."
-  ].filter(Boolean);
+  const lighting = backgroundInfo.lighting || "match ambient lighting in scene; soft, realistic shadows";
+  const era = backgroundInfo.era || "2025";
+  const timeLabel =
+    backgroundInfo.timePeriod === "past" ? "Historical" :
+    backgroundInfo.timePeriod === "future" ? "Futuristic" :
+    "Contemporary";
 
-  return promptLines.join("\n");
+  const religiousWear = [
+    "If the subject wears religious/cultural head covering (e.g., hijab, turban, yarmulke), preserve it EXACTLY as in the input.",
+    "Do not remove or alter cultural/religious garments.",
+    backgroundInfo.timePeriod === "past" ? "Apply the same historical color/contrast treatment to these garments." : "",
+    backgroundInfo.timePeriod === "future" ? "Keep traditional garments authentic (do not 'futurize' them)." : ""
+  ].filter(Boolean).join(" ");
+
+  const clothingBlock = [
+    "Clothing: gender-neutral athletic wear appropriate to the time period. Do NOT change based on gender.",
+    ...periodClothing
+  ].join("\n");
+
+  let poseBlock = "";
+  if (backgroundInfo.pose === "walking") {
+    poseBlock = [
+      "POSE (POST-RACE WALK):",
+      "- Natural, relaxed WALKING gait consistent with finish-line cool-down.",
+      "- One foot in contact with ground; NO airborne 'running' moment.",
+      "- Shorter stride length, gentle heel-to-toe roll, slight torso relaxation.",
+      "- Arms swing low and naturally; no aggressive running arm angles.",
+      "- Facial expression calmer, post-effort recovery vibe."
+    ].join("\n");
+  } else {
+    poseBlock = [
+      "POSE:",
+      backgroundInfo.timePeriod === "past"
+        ? "Slightly more upright, early-1900s athletic running form."
+        : backgroundInfo.timePeriod === "future"
+        ? "Efficient, biomechanically optimized modern/future running form."
+        : "Natural modern marathon running form.",
+      "Arms/legs positioned credibly mid-stride; no exaggerated motion."
+    ].join("\n");
+  }
+
+  return [
+    "Photoreal multi-image fusion (documentary realism, 35mm equivalent, ~f/5.6, ~1/500s, ISO 100–400).",
+    "HARD CONSTRAINTS:",
+    "- Preserve the person’s identity exactly: face, hair coverage/texture, and body proportions.",
+    "- NO race bibs or numbers anywhere.",
+    "- **Ensure the chosen color treatment (e.g., sepia, black-and-white) is uniformly applied across the entire person, including their face, skin, and hair, to seamlessly match the background.**",
+    "- Do not add glasses if none are present in the input. If present, adapt subtly to time period.",
+    religiousWear,
+
+    `CONTEXT: ${timeLabel} Amsterdam, ${era}.`,
+    `Background: ${backgroundInfo.description}.`,
+    colorTreatmentInstruction,
+
+    "PLACEMENT, SCALE, & PERSPECTIVE (HIGHEST PRIORITY):",
+    "1. **Placement:** " + compositionNote,
+    "2. **Depth:** " + placementInstruction, // Using the refined instruction
+    "3. **Sizing (VERY IMPORTANT):** The runner's final size must be determined **exclusively by their placement and the scene's perspective.** The goal is realism. **DO NOT make the runner appear disproportionately large.** A strong guideline: the runner's head should be significantly below the top of an average doorway/archway in the mid-ground. They should not dominate the frame more than a real person at that distance would.",
+    "4. **Validation:** Check the resulting scale against environmental cues. The runner should be proportionally correct next to crowds (if present), and significantly smaller than architectural elements like doorways/windows when in the mid-ground.",
+    "Use a WIDE environmental framing where the architecture and setting remain dominant. The person is part of the scene, not a portrait.",
+
+    "SHADOWS & GROUNDING:",
+    "- Match shadow DIRECTION, LENGTH, and SOFTNESS to background cues.",
+    "- Use soft, diffused contact shadows under feet; darkest directly beneath, feathered edges.",
+    "- Ensure feet/footwear contact aligns with the ground plane, following its texture (e.g., cobblestones).",
+
+    `LIGHTING: ${lighting}. Keep skin and clothing illumination coherent with scene key and fill.`,
+
+    "CLOTHING (GENDER-NEUTRAL, PERIOD-APPROPRIATE):",
+    clothingBlock,
+
+    poseBlock,
+
+    "FINAL CHECK:",
+    "- Identity preserved; clothing period-correct and gender-neutral; religious/cultural wear intact.",
+    "- No bibs/numbers/logos; no added accessories not in the input.",
+    "- **Scale is realistic and dictated by perspective (not disproportionately large).**",
+    "- **Color treatment (e.g., sepia, B&W) is uniformly applied to the entire person, including the face.**",
+    "- Shadows/lighting/perspective seamlessly match background."
+  ].filter(Boolean).join("\n");
 }
-// Process generation function for queue
-async function processGeneration(fileBuffer, mimetype, { backgroundId, gender }, kioskId) {
+
+// Generation core
+async function processGeneration(fileBuffer, mimetype, { backgroundId, gender, prominence }, kioskId) {
   const sessionId = uuidv4();
   const startTime = Date.now();
-  
+
   // Update kiosk stats
-  kioskStats[kioskId].total++;
-  kioskStats[kioskId].lastActive = new Date();
-  
+  kioskStats[kioskId]?.total !== undefined && (kioskStats[kioskId].total++);
+  kioskStats[kioskId] && (kioskStats[kioskId].lastActive = new Date());
+
   // Track session
   activeSessions.set(sessionId, {
     kioskId,
     startTime,
     status: 'processing',
     backgroundId,
-    gender
+    gender,
+    prominence
   });
 
   try {
     const backgroundInfo = BACKGROUNDS[backgroundId];
-    if (!backgroundInfo) {
-      throw new Error('Invalid background selection');
-    }
+    if (!backgroundInfo) throw new Error('Invalid background selection');
 
     // Read background image
     const backgroundPath = path.join(__dirname, 'backgrounds', backgroundInfo.file);
     const backgroundBuffer = await fs.readFile(backgroundPath);
+    const backgroundMime = inferMimeFromFilename(backgroundInfo.file);
 
     // Convert to Gemini format
-    const personPart = await fileToInlineData(fileBuffer, mimetype);
-    const envPart = await fileToInlineData(backgroundBuffer, "image/jpeg");
+    const personPart = await fileToInlineData(fileBuffer, mimetype || "image/jpeg");
+    const envPart = await fileToInlineData(backgroundBuffer, backgroundMime);
 
-    // Generate prompt
-    const prompt = generateGenderAwarePrompt(gender, backgroundInfo);
+    // Generate prompt (now with prominence)
+    const prompt = generateGenderAwarePrompt(gender, backgroundInfo, prominence || "medium");
 
     console.log(`[${kioskId}] Generating image for session ${sessionId.slice(0,8)}...`);
-    
-    // Call Gemini API
+
+    // Call Gemini
     const result = await model.generateContent([prompt, personPart, envPart]);
     const parts = result.response?.candidates?.[0]?.content?.parts || [];
 
@@ -527,17 +466,17 @@ async function processGeneration(fileBuffer, mimetype, { backgroundId, gender },
     for (const part of parts) {
       if (part.inlineData?.data) {
         let buffer = Buffer.from(part.inlineData.data, "base64");
-        
+
         // Apply overlay
         buffer = await applyOverlay(buffer);
-        
+
         // Create filename with kiosk ID
         const filename = `marathon_${kioskId}_${Date.now()}_${sessionId.slice(0,8)}.png`;
         outputPath = path.join(__dirname, 'outputs', filename);
         await fs.writeFile(outputPath, buffer);
-        
+
         console.log(`[${kioskId}] ✅ Generated: ${filename}`);
-        
+
         // Update session status
         activeSessions.set(sessionId, {
           ...activeSessions.get(sessionId),
@@ -545,12 +484,12 @@ async function processGeneration(fileBuffer, mimetype, { backgroundId, gender },
           endTime: Date.now(),
           outputFile: filename
         });
-        
+
         // Update kiosk stats
-        kioskStats[kioskId].completed++;
-        
-        return { 
-          success: true, 
+        kioskStats[kioskId]?.completed !== undefined && (kioskStats[kioskId].completed++);
+
+        return {
+          success: true,
           imageUrl: `/outputs/${filename}`,
           message: 'Marathon photo generated successfully!',
           sessionId,
@@ -562,10 +501,9 @@ async function processGeneration(fileBuffer, mimetype, { backgroundId, gender },
     }
 
     throw new Error('No image generated');
-
   } catch (error) {
     console.error(`[${kioskId}] Generation error:`, error);
-    
+
     // Update session status
     activeSessions.set(sessionId, {
       ...activeSessions.get(sessionId),
@@ -573,34 +511,54 @@ async function processGeneration(fileBuffer, mimetype, { backgroundId, gender },
       error: error.message,
       endTime: Date.now()
     });
-    
+
     // Update kiosk stats
-    kioskStats[kioskId].failed++;
-    
+    kioskStats[kioskId]?.failed !== undefined && (kioskStats[kioskId].failed++);
+
     throw error;
   }
 }
 
 // API Endpoints
 
-// Get available backgrounds
+// Get available backgrounds (grouped)
 app.get('/api/backgrounds', (req, res) => {
-  const backgroundList = Object.entries(BACKGROUNDS).map(([id, info]) => ({
-    id,
-    name: info.name,
-    description: info.description,
-    thumbnail: `/backgrounds/${info.file}`
-  }));
-  res.json(backgroundList);
+  const categories = {
+    'amsterdam750': { title: 'Amsterdam 750', backgrounds: [] },
+    'futureofrunning': { title: 'Future of Running', backgrounds: [] },
+    'tcs50': { title: 'TCS50', backgrounds: [] },
+    'classic': { title: 'Classic', backgrounds: [] }
+  };
+
+  Object.entries(BACKGROUNDS).forEach(([id, info]) => {
+    const backgroundData = {
+      id,
+      name: info.name,
+      description: info.description,
+      thumbnail: `/backgrounds/${info.file}`
+    };
+
+    if (id.startsWith('amsterdam750-')) {
+      categories.amsterdam750.backgrounds.push(backgroundData);
+    } else if (id.startsWith('future-')) {
+      categories.futureofrunning.backgrounds.push(backgroundData);
+    } else if (id.startsWith('tcs50-')) {
+      categories.tcs50.backgrounds.push(backgroundData);
+    } else {
+      categories.classic.backgrounds.push(backgroundData);
+    }
+  });
+
+  res.json(categories);
 });
 
-// Main generate endpoint with queue management
+// Main generate endpoint with queue & prominence parameter
 app.post('/api/generate', kioskLimiter, upload.single('selfie'), async (req, res) => {
   const kioskId = req.headers['x-kiosk-id'] || 'unknown';
-  
+
   try {
-    const { backgroundId, gender } = req.body;
-    const selfieBuffer = req.file.buffer;
+    const { backgroundId, gender, prominence = "medium" } = req.body;
+    const selfieBuffer = req.file?.buffer;
 
     if (!backgroundId || !gender || !selfieBuffer) {
       return res.status(400).json({ error: 'Missing required fields' });
@@ -608,30 +566,32 @@ app.post('/api/generate', kioskLimiter, upload.single('selfie'), async (req, res
 
     // Check queue size
     if (generationQueue.size > 10) {
-      return res.status(503).json({ 
+      return res.status(503).json({
         error: 'Server is busy, please try again',
-        queueSize: generationQueue.size 
+        queueSize: generationQueue.size
       });
     }
 
-    console.log(`[${kioskId}] Adding to queue. Current queue size: ${generationQueue.size}`);
-    
+    console.log(
+      `[${kioskId}] Adding to queue. Current queue size: ${generationQueue.size}. Prominence: ${prominence}`
+    );
+
     // Add to processing queue
     const result = await generationQueue.add(
-      () => processGeneration(
-        req.file.buffer, 
-        req.file.mimetype, 
-        { backgroundId, gender }, 
-        kioskId
-      ),
+      () =>
+        processGeneration(
+          req.file.buffer,
+          req.file.mimetype,
+          { backgroundId, gender, prominence },
+          kioskId
+        ),
       { priority: kioskId === 'kiosk-3' ? 1 : 0 } // VIP booth gets priority
     );
 
     res.json(result);
-
   } catch (error) {
     console.error(`[${kioskId}] Error:`, error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to generate image',
       details: error.message,
       kioskId
@@ -665,10 +625,8 @@ app.get('/api/monitor', (req, res) => {
 app.get('/api/kiosk/:kioskId/status', (req, res) => {
   const { kioskId } = req.params;
   const stats = kioskStats[kioskId];
-  
-  if (!stats) {
-    return res.status(404).json({ error: 'Invalid kiosk ID' });
-  }
+
+  if (!stats) return res.status(404).json({ error: 'Invalid kiosk ID' });
 
   res.json({
     kioskId,
@@ -678,12 +636,12 @@ app.get('/api/kiosk/:kioskId/status', (req, res) => {
   });
 });
 
-// Health check with kiosk support
+// Health check
 app.get('/api/health', (req, res) => {
   const kioskId = req.headers['x-kiosk-id'] || req.query.kiosk;
-  
-  res.json({ 
-    status: 'ok', 
+
+  res.json({
+    status: 'ok',
     service: 'Amsterdam Marathon Photobooth',
     kioskId,
     timestamp: new Date(),
@@ -698,17 +656,15 @@ app.get('/api/health', (req, res) => {
 setInterval(() => {
   const oneHourAgo = Date.now() - (60 * 60 * 1000);
   let cleaned = 0;
-  
+
   for (const [id, session] of activeSessions.entries()) {
     if (session.startTime < oneHourAgo) {
       activeSessions.delete(id);
       cleaned++;
     }
   }
-  
-  if (cleaned > 0) {
-    console.log(`Cleaned ${cleaned} old sessions`);
-  }
+
+  if (cleaned > 0) console.log(`Cleaned ${cleaned} old sessions`);
 }, 30 * 60 * 1000);
 
 // Clean up old images every hour
@@ -718,7 +674,7 @@ schedule.scheduleJob('0 * * * *', async () => {
     const files = await fs.readdir(outputDir);
     const now = Date.now();
     const maxAge = 4 * 60 * 60 * 1000; // 4 hours
-    
+
     for (const file of files) {
       const filePath = path.join(outputDir, file);
       const stats = await fs.stat(filePath);

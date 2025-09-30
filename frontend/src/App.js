@@ -7,8 +7,29 @@ import ResultDisplay from './components/ResultDisplay';
 import KioskMonitor from './components/KioskMonitor'; // New component
 import axios from 'axios';
 import KIOSK_CONFIG from './config/kiosk';
+const isElectron = window.electronAPI !== undefined;
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001';
+
+const getApiUrl = () => {
+  if (process.env.REACT_APP_API_URL) {
+    return process.env.REACT_APP_API_URL;
+  }
+  
+  // Check if we have a saved API URL in localStorage (for kiosk configuration)
+  const savedUrl = localStorage.getItem('apiUrl');
+  if (savedUrl) {
+    return savedUrl;
+  }
+  
+  // Default URLs
+  if (process.env.NODE_ENV === 'production' || isElectron) {
+    return 'https://marathon-photobooth-backend.railway.app'; // Replace with your Railway URL
+  }
+  
+  return 'http://localhost:3001';
+};
+
+const API_URL = getApiUrl();
 
 function App() {
   const [currentStep, setCurrentStep] = useState(1);

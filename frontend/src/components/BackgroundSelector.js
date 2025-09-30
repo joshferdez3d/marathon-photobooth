@@ -233,7 +233,7 @@ function BackgroundSelector({ onSelect }) {
               >
                 <div className="background-image-wrapper">
                   <img
-                    src={bg.thumbnail}
+                    src={`${API_URL}${bg.thumbnail}`}  // Changed from just {bg.thumbnail}
                     alt={bg.name}
                     className="background-thumbnail-horizontal"
                     onError={(e) => {

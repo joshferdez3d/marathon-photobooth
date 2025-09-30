@@ -4,15 +4,26 @@ function ResultDisplay({ imageUrl, onStartOver }) {
   const [email, setEmail] = useState('');
   const [emailSent, setEmailSent] = useState(false);
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
+  try {
+    const response = await fetch(imageUrl);
+    const blob = await response.blob();
+    const blobUrl = window.URL.createObjectURL(blob);
+    
     const link = document.createElement('a');
-    link.href = imageUrl;
+    link.href = blobUrl;
     link.download = `amsterdam-marathon-${Date.now()}.png`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-  };
-
+    
+    window.URL.revokeObjectURL(blobUrl);
+  } catch (error) {
+    console.error('Download failed, opening in new tab:', error);
+    // Fallback: open in new tab
+    window.open(imageUrl, '_blank');
+  }
+};
   const handleEmailShare = async () => {
     // Implement email sharing logic here
     // This would connect to your backend email service

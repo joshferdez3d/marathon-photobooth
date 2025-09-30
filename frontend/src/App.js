@@ -20,7 +20,8 @@ function App() {
   const [error, setError] = useState(null);
   const [showMonitor, setShowMonitor] = useState(false);
   const [queuePosition, setQueuePosition] = useState(null);
-  
+    const [connectionStatus, setConnectionStatus] = useState('checking');
+
   // Inactivity timer
   const inactivityTimer = useRef(null);
   const lastActivityTime = useRef(Date.now());
@@ -55,6 +56,27 @@ function App() {
       }, KIOSK_CONFIG.inactivityTimeout);
     }
   }, [currentStep, isLoading, resetToStart]);
+
+  useEffect(() => {
+    const checkConnection = async () => {
+      try {
+        const response = await axios.get(`${API_URL}/api/health`, {
+          headers: { 'X-Kiosk-Id': KIOSK_CONFIG.kioskId },
+          timeout: 5000
+        });
+        setConnectionStatus('connected');
+        console.log(`Connected to backend: ${API_URL}`);
+      } catch (error) {
+        console.error('Backend connection failed:', error);
+        setConnectionStatus('error');
+        setError(`Cannot connect to server at ${API_URL}. Please check settings.`);
+      }
+    };
+
+    checkConnection();
+    const interval = setInterval(checkConnection, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Setup inactivity tracking
   useEffect(() => {
@@ -202,7 +224,7 @@ function App() {
       {showMonitor && <KioskMonitor kioskId={KIOSK_CONFIG.kioskId} />}
       
       <header className="App-header">
-        <h1>🏃 Amsterdam Marathon 2025</h1>
+        <h1>ðŸƒ Amsterdam Marathon 2025</h1>
         <h2>AI Photo Booth - {kioskInfo.name}</h2>
         {KIOSK_CONFIG.debug && (
           <div className="kiosk-debug">
@@ -230,14 +252,14 @@ function App() {
             <img src={capturedImage} alt="Your selfie" className="preview-image" />
             <div className="button-group">
               <button onClick={handleRetake} className="btn btn-secondary">
-                📸 Retake Photo
+                ðŸ“¸ Retake Photo
               </button>
               <button 
                 onClick={handleGenerate} 
                 className="btn btn-primary"
                 disabled={isLoading}
               >
-                {isLoading ? 'Generating... ⏳' : '✨ Generate Marathon Photo'}
+                {isLoading ? 'Generating... â³' : 'âœ¨ Generate Marathon Photo'}
               </button>
             </div>
             {error && (

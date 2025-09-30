@@ -137,20 +137,21 @@ async function applyOverlay(generatedImageBuffer) {
 
 // --- BACKGROUNDS (unchanged from your version) ---
 const BACKGROUNDS = {
-  "amsterdam750-flowermarket": {
+    "amsterdam750-flowermarket": {
     name: "Historic Flower Market",
     file: "Amsterdam750-FlowerMarket.png",
     description: "Historic Amsterdam canal with traditional Dutch houses, flower market scene",
     lighting: "overcast Northern European light, soft shadows",
-    colorTreatment: "Hand painted color with rich historical tones",
+    colorTreatment: "oil painting aesthetic with rich brushstrokes, classical Dutch masters style, painterly texture",
     composition: "canal on left, street path on right side",
     timePeriod: "past",
     era: "early 1900s",
-    pose: "running" // <-- NEW: post-race walking only for this background
+    pose: "running",
+    artisticStyle: "oil-painting" // Add this flag
   },
   "amsterdam750-goldenage": {
     name: "Golden Age Harbor",
-    file: "Amsterdam750-GoldenAge1.png",
+    file: "Amsterdam750-GoldenAgeV2.png",
     description: "Sepia-toned Amsterdam harbor from the Golden Age",
     lighting: "soft, diffused historical lighting",
     colorTreatment: "sepia vintage filter with muted browns and yellows",
@@ -162,19 +163,20 @@ const BACKGROUNDS = {
   },
   "amsterdam750-rijksmuseum": {
     name: "Rijksmuseum Celebration",
-    file: "Amsterdam750-Rijksmuseum3.png",
-    description: "Modern crowds at the Rijksmuseum",
-    lighting: "bright daylight, natural shadows",
-    colorTreatment: "full color modern photography",
+    file: "Amsterdam750-RijksmuseumV6.png",
+    description: "Sepia-toned vintage mararthon at the Rijksmuseum, no other runners or people in the background",
+    lighting: "soft, diffused historical lighting",
+    colorTreatment: "sepia vintage filter with muted browns and yellows",
     composition: "museum entrance centered, crowds on sides",
     timePeriod: "present",
     era: "2025",
     pose: "running" // <-- NEW: post-race walking only for this background
 
+
   },
   "future-solarbridge": {
     name: "Solar Bridge Run",
-    file: "FutureofRunning-SolarBridge2.png",
+    file: "FutureofRunning-SolarBridge3.png",
     description: "Futuristic bridge with solar panels and drone spectators",
     lighting: "bright futuristic lighting with LED accents",
     colorTreatment: "full color with blue-cyan tech tones",
@@ -198,7 +200,7 @@ const BACKGROUNDS = {
   },
   "future-smartfinish": {
     name: "Smart Stadium Finish",
-    file: "FututeofRunning-SmartFinish5.png", // keep typo if filename is exactly this
+    file: "FututeofRunning-SmartFinish6.png", // keep typo if filename is exactly this
     description: "High-tech stadium with robotic assistants and holographic finish line",
     lighting: "bright stadium lighting with holographic effects",
     colorTreatment: "full color vibrant with neon accents",
@@ -221,7 +223,7 @@ const BACKGROUNDS = {
   },
   "tcs50-iamsterdam": {
     name: "I Amsterdam",
-    file: "TCS50-Iamsterdam.png",
+    file: "TCS50-IamsterdamV4.png",
     description: "Modern marathon at the iconic I Amsterdam sign",
     lighting: "bright modern daylight",
     colorTreatment: "full color contemporary photography",
@@ -231,45 +233,16 @@ const BACKGROUNDS = {
     pose: "running" // <-- NEW: post-race walking only for this background
 
   },
-  "amsterdam-canal": {
-    name: "Amsterdam Canal - Historic",
-    file: "amsterdam-canal.png",
-    description: "Historic Amsterdam canal with traditional Dutch houses, flower market scene",
-    lighting: "overcast Northern European light, soft shadows",
-    colorTreatment: "sepia vintage filter with muted browns and yellows",
-    composition: "canal on left, street path on right side",
-    timePeriod: "past",
-    era: "early 1900s"
-  },
-  "vondelpark": {
-    name: "Vondelpark - Modern",
-    file: "vondelpark.jpg",
+  "tcs50-vondelpark": {
+    name: "Vondelpark",
+    file: "TCS50-Vondelpark.png",
     description: "Green park setting with trees and pathways",
     lighting: "dappled sunlight through trees, natural green tones",
     colorTreatment: "full color natural tones",
     composition: "centered park path",
     timePeriod: "present",
-    era: "2025"
-  },
-  "dam-square": {
-    name: "Dam Square - Contemporary",
-    file: "dam-square.jpg",
-    description: "Bustling city center with historic buildings",
-    lighting: "urban daylight, mixed shadows from buildings",
-    colorTreatment: "full color modern photography",
-    composition: "wide open square, centered composition",
-    timePeriod: "present",
-    era: "2025"
-  },
-  "olympic-stadium": {
-    name: "Olympic Stadium - Future",
-    file: "olympic-stadium.png",
-    description: "Futuristic stadium setting with advanced architecture",
-    lighting: "bright athletic venue lighting",
-    colorTreatment: "full color vibrant tones",
-    composition: "stadium entrance, centered",
-    timePeriod: "future",
-    era: "2050s"
+    era: "2025",
+    pose: "running"
   }
 };
 
@@ -301,124 +274,190 @@ function getPeriodAppropriateClothing(timePeriod, era) {
   return clothingByPeriod[timePeriod] || clothingByPeriod.present;
 }
 
-// NEW: Streamlined, parameterized prompt builder
 function generateGenderAwarePrompt(gender, backgroundInfo, prominence = "medium") {
-  const genderSpecific = {
-    male: "Preserve masculine facial features and body proportions from the input photo.",
-    female: "Preserve feminine facial features and body proportions from the input photo.",
-    "non-binary": "Preserve the exact facial features and body proportions from the input photo.",
-    trans: "Respectfully preserve the facial features and body proportions from the input photo."
-  };
-  const genderInstruction = genderSpecific[gender] || genderSpecific["non-binary"];
+  const genderSpecific = {
+    male: "Preserve masculine facial features and body proportions from the input photo.",
+    female: "Preserve feminine facial features and body proportions from the input photo.",
+    "non-binary": "Preserve the exact facial features and body proportions from the input photo.",
+    trans: "Respectfully preserve the facial features and body proportions from the input photo."
+  };
+  const genderInstruction = genderSpecific[gender] || genderSpecific["non-binary"];
 
-  const periodClothing = getPeriodAppropriateClothing(
-    backgroundInfo.timePeriod || "present",
-    backgroundInfo.era || "2025"
-  );
+  // Add gender-specific scale correction
+  let scaleCorrection = "";
+  if (gender === "female") {
+    scaleCorrection = [
+      "CRITICAL SCALE ADJUSTMENT FOR FEMALE SUBJECTS:",
+      "- Female runners must be placed at the SAME DISTANCE as male runners would be",
+      "- Do NOT make female subjects appear closer or larger than specified",
+      "- Apply a 15-20% reduction in apparent size to counteract model bias",
+      "- Ensure the female runner appears naturally integrated at the correct distance",
+      "- The runner should occupy approximately 15-25% of frame height maximum"
+    ].join("\n");
+  }
 
-  let colorTreatmentInstruction = "Use natural, full-color rendering consistent with the background lighting.";
-  if (backgroundInfo.colorTreatment) {
-    const ct = backgroundInfo.colorTreatment.toLowerCase();
-    if (ct.includes("sepia") || ct.includes("vintage")) {
-      // --- CRITICAL FIX: Explicitly apply sepia to the face too ---
-      colorTreatmentInstruction = "Apply a unified SEPIA tone to the generated person **(including the face)**; warm browns/yellows, muted saturation, match background contrast and grain.";
-    } else if (ct.includes("black") || ct.includes("monochrome")) {
-      // --- CRITICAL FIX: Explicitly apply B&W to the face too ---
-      colorTreatmentInstruction = "Convert the generated person to BLACK-AND-WHITE (grayscale) **(including the face)**; match background contrast and grain.";
-    }
-  }
+  const periodClothing = getPeriodAppropriateClothing(
+    backgroundInfo.timePeriod || "present",
+    backgroundInfo.era || "2025"
+  );
 
-  const compositionNote = "Identify the primary path/road/track in the background. Place the runner **directly in the center of this path** to ensure they appear to be running on it correctly.";
+  // Enhanced color treatment for oil painting style
+  let colorTreatmentInstruction = "Use natural, full-color rendering consistent with the background lighting.";
+  let artisticStyleInstruction = "";
+  
+  if (backgroundInfo.artisticStyle === "oil-painting" || 
+      (backgroundInfo.colorTreatment && backgroundInfo.colorTreatment.toLowerCase().includes("oil painting"))) {
+    colorTreatmentInstruction = [
+      "CRITICAL ARTISTIC STYLE REQUIREMENT:",
+      "- Apply classical oil painting aesthetic to the ENTIRE generated person",
+      "- Use visible brushstroke textures on skin, clothing, and hair",
+      "- Apply painterly color blending with subtle impasto effects",
+      "- Match the Dutch Golden Age painting style of the background",
+      "- Soften hard edges with painterly strokes",
+      "- Use rich, layered color tones characteristic of oil paintings",
+      "- Avoid photographic sharpness - maintain painted texture throughout",
+      "- Emulate the brushwork visible in the background scene"
+    ].join("\n");
+    
+    artisticStyleInstruction = [
+      "OIL PAINTING INTEGRATION:",
+      "- The person must look painted, not photographed",
+      "- Apply the same level of artistic brushwork as the background",
+      "- Use color mixing and blending typical of classical oil techniques",
+      "- Maintain consistent paint texture density with the environment",
+      "- No smooth photographic surfaces - everything should have painted texture"
+    ].join("\n");
+  } else if (backgroundInfo.colorTreatment) {
+    const ct = backgroundInfo.colorTreatment.toLowerCase();
+    if (ct.includes("sepia") || ct.includes("vintage")) {
+      colorTreatmentInstruction = "Apply a unified SEPIA tone to the generated person **(including the face)**; warm browns/yellows, muted saturation, match background contrast and grain.";
+    } else if (ct.includes("black") || ct.includes("monochrome")) {
+      colorTreatmentInstruction = "Convert the generated person to BLACK-AND-WHITE (grayscale) **(including the face)**; match background contrast and grain.";
+    }
+  }
 
-  // --- REFINED AGAIN: Adjusted prominence targets for further placement ---
-  const prominenceTargets = {
-    low: "Place the runner in the **far mid-ground** of the identified path, appearing naturally smaller due to perspective. They should be clearly visible but not prominent.",
-    medium: "Place the runner in the **mid-ground, distinctly further back from the immediate foreground**, of the identified path for realistic scale and environmental integration.",
-    high: "Place the runner in the **near mid-ground, but still ensuring sufficient distance from the camera for realistic environmental context**, of the identified path. They should appear naturally larger, but not oversized or portrait-like."
-  };
-  const placementInstruction = prominenceTargets[prominence] || prominenceTargets.medium;
+  const compositionNote = "Identify the primary path/road/track in the background. Place the runner **directly in the center of this path** to ensure they appear to be running on it correctly.";
 
+  // Adjusted prominence targets with gender-specific considerations
+  const prominenceTargets = {
+    low: gender === "female" 
+      ? "Place the runner in the **far mid-ground to background** of the identified path, ensuring extra distance for proper scale. They should appear small and naturally integrated."
+      : "Place the runner in the **far mid-ground** of the identified path, appearing naturally smaller due to perspective. They should be clearly visible but not prominent.",
+    
+    medium: gender === "female"
+      ? "Place the runner in the **mid-ground, ensuring significant distance from foreground**, at least 30-40% into the scene depth for realistic scale."
+      : "Place the runner in the **mid-ground, distinctly further back from the immediate foreground**, of the identified path for realistic scale and environmental integration.",
+    
+    high: gender === "female"
+      ? "Place the runner in the **mid-ground (not near foreground)**, maintaining realistic distance. Maximum 30% of frame height."
+      : "Place the runner in the **near mid-ground, but still ensuring sufficient distance from the camera for realistic environmental context**, of the identified path."
+  };
+  const placementInstruction = prominenceTargets[prominence] || prominenceTargets.medium;
 
-  const lighting = backgroundInfo.lighting || "match ambient lighting in scene; soft, realistic shadows";
-  const era = backgroundInfo.era || "2025";
-  const timeLabel =
-    backgroundInfo.timePeriod === "past" ? "Historical" :
-    backgroundInfo.timePeriod === "future" ? "Futuristic" :
-    "Contemporary";
+  const lighting = backgroundInfo.lighting || "match ambient lighting in scene; soft, realistic shadows";
+  const era = backgroundInfo.era || "2025";
+  const timeLabel =
+    backgroundInfo.timePeriod === "past" ? "Historical" :
+    backgroundInfo.timePeriod === "future" ? "Futuristic" :
+    "Contemporary";
 
-  const religiousWear = [
-    "If the subject wears religious/cultural head covering (e.g., hijab, turban, yarmulke), preserve it EXACTLY as in the input.",
-    "Do not remove or alter cultural/religious garments.",
-    backgroundInfo.timePeriod === "past" ? "Apply the same historical color/contrast treatment to these garments." : "",
-    backgroundInfo.timePeriod === "future" ? "Keep traditional garments authentic (do not 'futurize' them)." : ""
-  ].filter(Boolean).join(" ");
+  const religiousWear = [
+    "If the subject wears religious/cultural head covering (e.g., hijab, turban, yarmulke), preserve it EXACTLY as in the input.",
+    "Do not remove or alter cultural/religious garments.",
+    backgroundInfo.timePeriod === "past" ? "Apply the same historical color/contrast treatment to these garments." : "",
+    backgroundInfo.timePeriod === "future" ? "Keep traditional garments authentic (do not 'futurize' them)." : ""
+  ].filter(Boolean).join(" ");
 
-  const clothingBlock = [
-    "Clothing: gender-neutral athletic wear appropriate to the time period. Do NOT change based on gender.",
-    ...periodClothing
-  ].join("\n");
+  const clothingBlock = [
+    "Clothing: gender-neutral athletic wear appropriate to the time period. Do NOT change based on gender.",
+    ...periodClothing
+  ].join("\n");
 
-  let poseBlock = "";
-  if (backgroundInfo.pose === "walking") {
-    poseBlock = [
-      "POSE (POST-RACE WALK):",
-      "- Natural, relaxed WALKING gait consistent with finish-line cool-down.",
-      "- One foot in contact with ground; NO airborne 'running' moment.",
-      "- Shorter stride length, gentle heel-to-toe roll, slight torso relaxation.",
-      "- Arms swing low and naturally; no aggressive running arm angles.",
-      "- Facial expression calmer, post-effort recovery vibe."
-    ].join("\n");
-  } else {
-    poseBlock = [
-      "POSE:",
-      backgroundInfo.timePeriod === "past"
-        ? "Slightly more upright, early-1900s athletic running form."
-        : backgroundInfo.timePeriod === "future"
-        ? "Efficient, biomechanically optimized modern/future running form."
-        : "Natural modern marathon running form.",
-      "Arms/legs positioned credibly mid-stride; no exaggerated motion."
-    ].join("\n");
-  }
+  let poseBlock = "";
+  if (backgroundInfo.pose === "walking") {
+    poseBlock = [
+      "POSE (POST-RACE WALK):",
+      "- Natural, relaxed WALKING gait consistent with finish-line cool-down.",
+      "- One foot in contact with ground; NO airborne 'running' moment.",
+      "- Shorter stride length, gentle heel-to-toe roll, slight torso relaxation.",
+      "- Arms swing low and naturally; no aggressive running arm angles.",
+      "- Facial expression calmer, post-effort recovery vibe."
+    ].join("\n");
+  } else {
+    poseBlock = [
+      "POSE:",
+      backgroundInfo.timePeriod === "past"
+        ? "Slightly more upright, early-1900s athletic running form."
+        : backgroundInfo.timePeriod === "future"
+        ? "Efficient, biomechanically optimized modern/future running form."
+        : "Natural modern marathon running form.",
+      "Arms/legs positioned credibly mid-stride; no exaggerated motion."
+    ].join("\n");
+  }
 
-  return [
-    "Photoreal multi-image fusion (documentary realism, 35mm equivalent, ~f/5.6, ~1/500s, ISO 100–400).",
-    "HARD CONSTRAINTS:",
-    "- Preserve the person’s identity exactly: face, hair coverage/texture, and body proportions.",
-    "- NO race bibs or numbers anywhere.",
-    "- **Ensure the chosen color treatment (e.g., sepia, black-and-white) is uniformly applied across the entire person, including their face, skin, and hair, to seamlessly match the background.**",
-    "- Do not add glasses if none are present in the input. If present, adapt subtly to time period.",
-    religiousWear,
+  // Build the final prompt with artistic style integration and gender scale correction
+  return [
+    backgroundInfo.artisticStyle === "oil-painting" 
+      ? "Classical oil painting style image fusion (Dutch Golden Age masters aesthetic, visible brushstrokes, painterly texture throughout)."
+      : "Photoreal multi-image fusion (documentary realism, 35mm equivalent, ~f/5.6, ~1/500s, ISO 100–400).",
+    
+    "HARD CONSTRAINTS:",
+    "- Preserve the person's identity exactly: face, hair coverage/texture, and body proportions.",
+    "- NO race bibs or numbers anywhere.",
+    "- **Ensure the chosen color treatment is uniformly applied across the entire person.**",
+    backgroundInfo.artisticStyle === "oil-painting" 
+      ? "- **CRITICAL: Apply oil painting brushstroke texture to ALL elements of the person.**"
+      : "",
+    "- Do not add glasses if none are present in the input.",
+    religiousWear,
 
-    `CONTEXT: ${timeLabel} Amsterdam, ${era}.`,
-    `Background: ${backgroundInfo.description}.`,
-    colorTreatmentInstruction,
+    // Add gender-specific scale correction if needed
+    scaleCorrection,
 
-    "PLACEMENT, SCALE, & PERSPECTIVE (HIGHEST PRIORITY):",
-    "1. **Placement:** " + compositionNote,
-    "2. **Depth:** " + placementInstruction, // Using the refined instruction
-    "3. **Sizing (VERY IMPORTANT):** The runner's final size must be determined **exclusively by their placement and the scene's perspective.** The goal is realism. **DO NOT make the runner appear disproportionately large.** A strong guideline: the runner's head should be significantly below the top of an average doorway/archway in the mid-ground. They should not dominate the frame more than a real person at that distance would.",
-    "4. **Validation:** Check the resulting scale against environmental cues. The runner should be proportionally correct next to crowds (if present), and significantly smaller than architectural elements like doorways/windows when in the mid-ground.",
-    "Use a WIDE environmental framing where the architecture and setting remain dominant. The person is part of the scene, not a portrait.",
+    `CONTEXT: ${timeLabel} Amsterdam, ${era}.`,
+    `Background: ${backgroundInfo.description}.`,
+    colorTreatmentInstruction,
+    artisticStyleInstruction,
 
-    "SHADOWS & GROUNDING:",
-    "- Match shadow DIRECTION, LENGTH, and SOFTNESS to background cues.",
-    "- Use soft, diffused contact shadows under feet; darkest directly beneath, feathered edges.",
-    "- Ensure feet/footwear contact aligns with the ground plane, following its texture (e.g., cobblestones).",
+    "PLACEMENT, SCALE, & PERSPECTIVE (HIGHEST PRIORITY):",
+    "1. **Placement:** " + compositionNote,
+    "2. **Depth:** " + placementInstruction,
+    "3. **Sizing (VERY IMPORTANT):** The runner must appear at realistic scale for their distance in the scene.",
+    gender === "female" 
+      ? "   - CRITICAL: Female subjects tend to be generated too large. Ensure proper mid-ground to far placement."
+      : "",
+    "   - The runner should be proportionally smaller than nearby architectural elements",
+    "   - Maximum height: 20-30% of total frame height for medium prominence",
+    "   - Check against environmental cues: doors, windows, other people if present",
+    "4. **Gender-Neutral Sizing:** All runners regardless of gender should appear at similar scales when at similar distances.",
+    "5. **Validation:** The runner should look naturally integrated, not superimposed or too prominent.",
 
-    `LIGHTING: ${lighting}. Keep skin and clothing illumination coherent with scene key and fill.`,
+    "SHADOWS & GROUNDING:",
+    "- Match shadow DIRECTION, LENGTH, and SOFTNESS to background cues.",
+    "- Use soft, diffused contact shadows under feet.",
+    "- Ensure proper ground contact and alignment.",
+    backgroundInfo.artisticStyle === "oil-painting"
+      ? "- Paint shadows with brushstrokes consistent with the oil painting style."
+      : "",
 
-    "CLOTHING (GENDER-NEUTRAL, PERIOD-APPROPRIATE):",
-    clothingBlock,
+    `LIGHTING: ${lighting}.`,
+    backgroundInfo.artisticStyle === "oil-painting"
+      ? "Apply painterly lighting effects with visible brushwork."
+      : "",
 
-    poseBlock,
+    "CLOTHING (GENDER-NEUTRAL, PERIOD-APPROPRIATE):",
+    clothingBlock,
 
-    "FINAL CHECK:",
-    "- Identity preserved; clothing period-correct and gender-neutral; religious/cultural wear intact.",
-    "- No bibs/numbers/logos; no added accessories not in the input.",
-    "- **Scale is realistic and dictated by perspective (not disproportionately large).**",
-    "- **Color treatment (e.g., sepia, B&W) is uniformly applied to the entire person, including the face.**",
-    "- Shadows/lighting/perspective seamlessly match background."
-  ].filter(Boolean).join("\n");
+    poseBlock,
+
+    "FINAL CHECK:",
+    "- Identity preserved; clothing period-correct and gender-neutral.",
+    "- No bibs/numbers/logos; no added accessories.",
+    "- **Scale is realistic and consistent across genders (not disproportionately large).**",
+    "- **Female subjects placed at proper distance, not closer than intended.**",
+    "- Color/artistic treatment uniformly applied.",
+    "- Shadows/lighting/perspective seamlessly match background."
+  ].filter(Boolean).join("\n");
 }
 
 // Generation core
@@ -526,8 +565,8 @@ app.get('/api/backgrounds', (req, res) => {
   const categories = {
     'amsterdam750': { title: 'Amsterdam 750', backgrounds: [] },
     'futureofrunning': { title: 'Future of Running', backgrounds: [] },
-    'tcs50': { title: 'TCS50', backgrounds: [] },
-    'classic': { title: 'Classic', backgrounds: [] }
+    'tcs50': { title: 'TCS50', backgrounds: [] }
+    // Removed 'classic' category
   };
 
   Object.entries(BACKGROUNDS).forEach(([id, info]) => {
@@ -544,9 +583,8 @@ app.get('/api/backgrounds', (req, res) => {
       categories.futureofrunning.backgrounds.push(backgroundData);
     } else if (id.startsWith('tcs50-')) {
       categories.tcs50.backgrounds.push(backgroundData);
-    } else {
-      categories.classic.backgrounds.push(backgroundData);
     }
+    // Removed the 'else' clause that added to classic category
   });
 
   res.json(categories);
@@ -563,6 +601,15 @@ app.post('/api/generate', kioskLimiter, upload.single('selfie'), async (req, res
     if (!backgroundId || !gender || !selfieBuffer) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
+
+    const prominenceOverrides = {
+      'tcs50-firstmarathon': 'high',        // Closer for finish line
+      'amsterdam750-rijksmuseum': 'low',    // Smaller relative to museum
+      // Add more overrides as needed:
+      // 'amsterdam750-goldenage': 'low',
+      // 'amsterdam750-flowermarket': 'low',
+      // 'future-smartfinish': 'high',
+    };
 
     // Check queue size
     if (generationQueue.size > 10) {

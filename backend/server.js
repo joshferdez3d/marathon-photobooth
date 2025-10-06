@@ -3,6 +3,7 @@ import express from "express";
 import cors from "cors";
 import multer from "multer";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import * as fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "url";
@@ -18,6 +19,18 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Initialize S3 Client
+const s3Client = new S3Client({
+  region: process.env.AWS_REGION || 'us-east-1',
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+  }
+});
+
+const S3_BUCKET = process.env.S3_BUCKET_NAME;
+const S3_REGION = process.env.AWS_REGION || 'us-east-1';
+
 // Initialize Gemini (low temperature to improve consistency)
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
 const model = genAI.getGenerativeModel({
@@ -26,7 +39,6 @@ const model = genAI.getGenerativeModel({
     temperature: 0.28,
     topP: 0.9,
     topK: 32
-    // candidateCount intentionally left default (1) to avoid "Multiple candidates not enabled" errors
   }
 });
 
@@ -41,9 +53,9 @@ const kioskStats = {
 
 // Processing queue - limit concurrent Gemini API calls
 const generationQueue = new PQueue({
-  concurrency: 2,    // Process 2 images at once
-  interval: 1000,    // 1 second bucket
-  intervalCap: 3     // Max 3 per second
+  concurrency: 2,
+  interval: 1000,
+  intervalCap: 3
 });
 
 // Rate limiter per kiosk (disabled for test-script)
@@ -51,7 +63,6 @@ const kioskLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 5,
   skip: (req) => {
-    // Skip rate limiting for test script
     const kioskId = req.headers['x-kiosk-id'];
     return kioskId === 'test-script';
   },
@@ -62,20 +73,17 @@ const kioskLimiter = rateLimit({
 });
 
 // Middleware
-// Middleware - Update CORS configuration
 app.use(cors({
   origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or Postman)
     if (!origin) return callback(null, true);
     
     const allowedOrigins = [
       'http://localhost:3000',
       'http://localhost:3001', 
-      'https://marathon-photobooth-frontend.railway.app', // Replace with your actual frontend Railway URL
-      'https://marathon-photobooth.railway.app', // Add your production domain if you have one
+      'https://marathon-photobooth-frontend.railway.app',
+      'https://marathon-photobooth.railway.app',
     ];
     
-    // Allow any Railway app subdomain
     if (allowedOrigins.includes(origin) || 
         origin.includes('railway.app') || 
         origin.includes('localhost')) {
@@ -87,8 +95,9 @@ app.use(cors({
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'X-Kiosk-Id', 'Authorization']
-}));app.use(express.json());
-app.use('/outputs', express.static('outputs'));
+}));
+
+app.use(express.json());
 app.use('/backgrounds', express.static('backgrounds'));
 app.use('/overlays', express.static('overlays'));
 
@@ -99,7 +108,7 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 }
 });
 
-// Ensure directories exist
+// Ensure directories exist (only for backgrounds and overlays now)
 async function ensureDir(dir) {
   try {
     await fs.mkdir(path.join(__dirname, dir), { recursive: true });
@@ -107,11 +116,39 @@ async function ensureDir(dir) {
 }
 
 // Initialize directories
-await ensureDir('outputs');
-await ensureDir('uploads');
 await ensureDir('backgrounds');
 await ensureDir('overlays');
 await ensureDir('logs');
+
+// S3 Upload Function
+async function uploadToS3(buffer, filename, contentType = 'image/png') {
+  try {
+    const key = `marathon-photos/${filename}`;
+    
+    const command = new PutObjectCommand({
+      Bucket: S3_BUCKET,
+      Key: key,
+      Body: buffer,
+      ContentType: contentType,
+      CacheControl: 'max-age=86400', // Cache for 1 day
+      Metadata: {
+        uploadedAt: new Date().toISOString()
+      }
+    });
+
+    await s3Client.send(command);
+    
+    // Return public URL
+    const publicUrl = `https://${S3_BUCKET}.s3.${S3_REGION}.amazonaws.com/${key}`;
+    
+    console.log(`✅ Uploaded to S3: ${key}`);
+    
+    return publicUrl;
+  } catch (error) {
+    console.error('S3 upload error:', error);
+    throw new Error(`Failed to upload to S3: ${error.message}`);
+  }
+}
 
 // Helpers
 function inferMimeFromFilename(file) {
@@ -164,9 +201,9 @@ async function applyOverlay(generatedImageBuffer) {
   }
 }
 
-// --- BACKGROUNDS (unchanged from your version) ---
+// BACKGROUNDS (unchanged)
 const BACKGROUNDS = {
-    "amsterdam750-flowermarket": {
+  "amsterdam750-flowermarket": {
     name: "Historic Flower Market",
     file: "Amsterdam750-FlowerMarket.png",
     description: "Historic Amsterdam canal with traditional Dutch houses, flower market scene",
@@ -176,7 +213,7 @@ const BACKGROUNDS = {
     timePeriod: "past",
     era: "early 1900s",
     pose: "running",
-    artisticStyle: "oil-painting" // Add this flag
+    artisticStyle: "oil-painting"
   },
   "amsterdam750-goldenage": {
     name: "Golden Age Harbor",
@@ -187,8 +224,7 @@ const BACKGROUNDS = {
     composition: "harbor on left, cobblestone street on right",
     timePeriod: "past",
     era: "1600s-1700s",
-    pose: "running" // <-- NEW: post-race walking only for this background
-
+    pose: "running"
   },
   "amsterdam750-rijksmuseum": {
     name: "Rijksmuseum Celebration",
@@ -199,9 +235,7 @@ const BACKGROUNDS = {
     composition: "museum entrance centered, crowds on sides",
     timePeriod: "past",
     era: "1980",
-    pose: "running" // <-- NEW: post-race walking only for this background
-
-
+    pose: "running"
   },
   "future-solarbridge": {
     name: "Solar Bridge Run",
@@ -212,8 +246,7 @@ const BACKGROUNDS = {
     composition: "bridge pathway centered",
     timePeriod: "future",
     era: "2050s",
-    pose: "running" // <-- NEW: post-race walking only for this background
-
+    pose: "running"
   },
   "future-biodomes": {
     name: "Canal Biodomes",
@@ -224,20 +257,18 @@ const BACKGROUNDS = {
     composition: "canal path on right, biodomes on left",
     timePeriod: "future",
     era: "2050s",
-    pose: "running" // <-- NEW: post-race walking only for this background
-
+    pose: "running"
   },
   "future-smartfinish": {
     name: "Smart Stadium Finish",
-    file: "FutureofRunning-SmartFinish.png", // keep typo if filename is exactly this
+    file: "FutureofRunning-SmartFinish.png",
     description: "High-tech stadium with robotic assistants and holographic finish line",
     lighting: "bright stadium lighting with holographic effects",
     colorTreatment: "full color vibrant with neon accents",
     composition: "finish line centered, stadium surroundings",
     timePeriod: "future",
     era: "2050s",
-    pose: "walking" // <-- NEW: post-race walking only for this background
-
+    pose: "walking"
   },
   "tcs50-firstmarathon": {
     name: "The First Marathon",
@@ -248,7 +279,7 @@ const BACKGROUNDS = {
     composition: "track finish line centered",
     timePeriod: "past",
     era: "1970s",
-    pose: "walking" // <-- NEW: post-race walking only for this background
+    pose: "walking"
   },
   "tcs50-iamsterdam": {
     name: "I Amsterdam",
@@ -259,8 +290,7 @@ const BACKGROUNDS = {
     composition: "sign and runners centered",
     timePeriod: "present",
     era: "2025",
-    pose: "running" // <-- NEW: post-race walking only for this background
-
+    pose: "running"
   },
   "tcs50-vondelpark": {
     name: "Vondelpark",
@@ -275,7 +305,7 @@ const BACKGROUNDS = {
   }
 };
 
-// Period-appropriate, gender-neutral clothing
+// Period-appropriate clothing (unchanged)
 function getPeriodAppropriateClothing(timePeriod, era) {
   const clothingByPeriod = {
     past: [
@@ -285,7 +315,6 @@ function getPeriodAppropriateClothing(timePeriod, era) {
       "- Long dark socks; canvas/leather lace-up shoes",
       "- Natural fabrics; no modern logos",
       "- Clothing should appear to fit their body naturally, not be artificially tight or loose",
-
     ],
     present: [
       "MODERN ATHLETIC ATTIRE (2025) - GENDER NEUTRAL:",
@@ -302,7 +331,6 @@ function getPeriodAppropriateClothing(timePeriod, era) {
       "- Advanced cushioning shoes; minimal design",
       "- Subtle holographic/bioluminescent accents",
       "- Clothing should appear to fit their body naturally, not be artificially tight or loose",
-
     ]
   };
   return clothingByPeriod[timePeriod] || clothingByPeriod.present;
@@ -317,7 +345,6 @@ function generateGenderAwarePrompt(gender, backgroundInfo, prominence = "medium"
   };
   const genderInstruction = genderSpecific[gender] || genderSpecific["non-binary"];
 
-  // Add gender-specific scale correction
   let scaleCorrection = "";
   if (gender === "female") {
     scaleCorrection = [
@@ -330,7 +357,6 @@ function generateGenderAwarePrompt(gender, backgroundInfo, prominence = "medium"
     ].join("\n");
   }
 
-  // Add body type preservation instruction
   const bodyTypePreservation = [
     "BODY TYPE PRESERVATION (CRITICAL):",
     "- Maintain the person's EXACT body type, shape, and build from the input photo",
@@ -350,7 +376,6 @@ function generateGenderAwarePrompt(gender, backgroundInfo, prominence = "medium"
     backgroundInfo.era || "2025"
   );
 
-  // Enhanced color treatment for oil painting style
   let colorTreatmentInstruction = "Use natural, full-color rendering consistent with the background lighting.";
   let artisticStyleInstruction = "";
   
@@ -387,7 +412,6 @@ function generateGenderAwarePrompt(gender, backgroundInfo, prominence = "medium"
 
   const compositionNote = "Identify the primary path/road/track in the background. Place the runner **directly in the center of this path** to ensure they appear to be running on it correctly.";
 
-  // Adjusted prominence targets with gender-specific considerations
   const prominenceTargets = {
     low: gender === "female" 
       ? "Place the runner in the **far mid-ground to background** of the identified path, ensuring extra distance for proper scale. They should appear small and naturally integrated."
@@ -444,7 +468,6 @@ function generateGenderAwarePrompt(gender, backgroundInfo, prominence = "medium"
     ].join("\n");
   }
 
-  // Build the final prompt with artistic style integration and gender scale correction
   return [
     backgroundInfo.artisticStyle === "oil-painting" 
       ? "Classical oil painting style image fusion (Dutch Golden Age masters aesthetic, visible brushstrokes, painterly texture throughout)."
@@ -460,7 +483,6 @@ function generateGenderAwarePrompt(gender, backgroundInfo, prominence = "medium"
     "- Do not add glasses if none are present in the input.",
     religiousWear,
 
-    // Add gender-specific scale correction if needed
     scaleCorrection,
 
     `CONTEXT: ${timeLabel} Amsterdam, ${era}.`,
@@ -513,16 +535,14 @@ function generateGenderAwarePrompt(gender, backgroundInfo, prominence = "medium"
   ].filter(Boolean).join("\n");
 }
 
-// Generation core
+// Generation core with S3 upload
 async function processGeneration(fileBuffer, mimetype, { backgroundId, gender, prominence }, kioskId) {
   const sessionId = uuidv4();
   const startTime = Date.now();
 
-  // Update kiosk stats
   kioskStats[kioskId]?.total !== undefined && (kioskStats[kioskId].total++);
   kioskStats[kioskId] && (kioskStats[kioskId].lastActive = new Date());
 
-  // Track session
   activeSessions.set(sessionId, {
     kioskId,
     startTime,
@@ -536,25 +556,20 @@ async function processGeneration(fileBuffer, mimetype, { backgroundId, gender, p
     const backgroundInfo = BACKGROUNDS[backgroundId];
     if (!backgroundInfo) throw new Error('Invalid background selection');
 
-    // Read background image
     const backgroundPath = path.join(__dirname, 'backgrounds', backgroundInfo.file);
     const backgroundBuffer = await fs.readFile(backgroundPath);
     const backgroundMime = inferMimeFromFilename(backgroundInfo.file);
 
-    // Convert to Gemini format
     const personPart = await fileToInlineData(fileBuffer, mimetype || "image/jpeg");
     const envPart = await fileToInlineData(backgroundBuffer, backgroundMime);
 
-    // Generate prompt (now with prominence)
     const prompt = generateGenderAwarePrompt(gender, backgroundInfo, prominence || "medium");
 
     console.log(`[${kioskId}] Generating image for session ${sessionId.slice(0,8)}...`);
 
-    // Call Gemini
     const result = await model.generateContent([prompt, personPart, envPart]);
     const parts = result.response?.candidates?.[0]?.content?.parts || [];
 
-    let outputPath = null;
     for (const part of parts) {
       if (part.inlineData?.data) {
         let buffer = Buffer.from(part.inlineData.data, "base64");
@@ -562,27 +577,27 @@ async function processGeneration(fileBuffer, mimetype, { backgroundId, gender, p
         // Apply overlay
         buffer = await applyOverlay(buffer);
 
-        // Create filename with kiosk ID
+        // Upload to S3
         const filename = `marathon_${kioskId}_${Date.now()}_${sessionId.slice(0,8)}.png`;
-        outputPath = path.join(__dirname, 'outputs', filename);
-        await fs.writeFile(outputPath, buffer);
+        const s3Url = await uploadToS3(buffer, filename, 'image/png');
 
-        console.log(`[${kioskId}] ✅ Generated: ${filename}`);
+        console.log(`[${kioskId}] ✅ Generated and uploaded: ${filename}`);
 
-        // Update session status
         activeSessions.set(sessionId, {
           ...activeSessions.get(sessionId),
           status: 'completed',
           endTime: Date.now(),
-          outputFile: filename
+          outputFile: filename,
+          s3Url
         });
 
-        // Update kiosk stats
         kioskStats[kioskId]?.completed !== undefined && (kioskStats[kioskId].completed++);
 
         return {
           success: true,
-          imageUrl: `/outputs/${filename}`,
+          imageUrl: s3Url,
+          s3Url: s3Url,     // Also include as s3Url for clarity
+          isS3: true,       // Flag to indicate this is an S3 URL
           message: 'Marathon photo generated successfully!',
           sessionId,
           kioskId,
@@ -596,7 +611,6 @@ async function processGeneration(fileBuffer, mimetype, { backgroundId, gender, p
   } catch (error) {
     console.error(`[${kioskId}] Generation error:`, error);
 
-    // Update session status
     activeSessions.set(sessionId, {
       ...activeSessions.get(sessionId),
       status: 'failed',
@@ -604,7 +618,6 @@ async function processGeneration(fileBuffer, mimetype, { backgroundId, gender, p
       endTime: Date.now()
     });
 
-    // Update kiosk stats
     kioskStats[kioskId]?.failed !== undefined && (kioskStats[kioskId].failed++);
 
     throw error;
@@ -613,13 +626,11 @@ async function processGeneration(fileBuffer, mimetype, { backgroundId, gender, p
 
 // API Endpoints
 
-// Get available backgrounds (grouped)
 app.get('/api/backgrounds', (req, res) => {
   const categories = {
     'amsterdam750': { title: 'Amsterdam 750', backgrounds: [] },
     'futureofrunning': { title: 'Future of Running', backgrounds: [] },
     'tcs50': { title: 'TCS50', backgrounds: [] }
-    // Removed 'classic' category
   };
 
   Object.entries(BACKGROUNDS).forEach(([id, info]) => {
@@ -637,13 +648,11 @@ app.get('/api/backgrounds', (req, res) => {
     } else if (id.startsWith('tcs50-')) {
       categories.tcs50.backgrounds.push(backgroundData);
     }
-    // Removed the 'else' clause that added to classic category
   });
 
   res.json(categories);
 });
 
-// Main generate endpoint with queue & prominence parameter
 app.post('/api/generate', kioskLimiter, upload.single('selfie'), async (req, res) => {
   const kioskId = req.headers['x-kiosk-id'] || 'unknown';
 
@@ -655,16 +664,6 @@ app.post('/api/generate', kioskLimiter, upload.single('selfie'), async (req, res
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    const prominenceOverrides = {
-      'tcs50-firstmarathon': 'high',        // Closer for finish line
-      'amsterdam750-rijksmuseum': 'low',    // Smaller relative to museum
-      // Add more overrides as needed:
-      // 'amsterdam750-goldenage': 'low',
-      // 'amsterdam750-flowermarket': 'low',
-      // 'future-smartfinish': 'high',
-    };
-
-    // Check queue size
     if (generationQueue.size > 10) {
       return res.status(503).json({
         error: 'Server is busy, please try again',
@@ -672,20 +671,16 @@ app.post('/api/generate', kioskLimiter, upload.single('selfie'), async (req, res
       });
     }
 
-    console.log(
-      `[${kioskId}] Adding to queue. Current queue size: ${generationQueue.size}. Prominence: ${prominence}`
-    );
+    console.log(`[${kioskId}] Adding to queue. Current queue size: ${generationQueue.size}. Prominence: ${prominence}`);
 
-    // Add to processing queue
     const result = await generationQueue.add(
-      () =>
-        processGeneration(
-          req.file.buffer,
-          req.file.mimetype,
-          { backgroundId, gender, prominence },
-          kioskId
-        ),
-      { priority: kioskId === 'kiosk-3' ? 1 : 0 } // VIP booth gets priority
+      () => processGeneration(
+        req.file.buffer,
+        req.file.mimetype,
+        { backgroundId, gender, prominence },
+        kioskId
+      ),
+      { priority: kioskId === 'kiosk-3' ? 1 : 0 }
     );
 
     res.json(result);
@@ -699,7 +694,6 @@ app.post('/api/generate', kioskLimiter, upload.single('selfie'), async (req, res
   }
 });
 
-// Monitoring endpoint
 app.get('/api/monitor', (req, res) => {
   const recentSessions = Array.from(activeSessions.entries())
     .slice(-20)
@@ -721,7 +715,6 @@ app.get('/api/monitor', (req, res) => {
   });
 });
 
-// Kiosk status endpoint
 app.get('/api/kiosk/:kioskId/status', (req, res) => {
   const { kioskId } = req.params;
   const stats = kioskStats[kioskId];
@@ -736,7 +729,6 @@ app.get('/api/kiosk/:kioskId/status', (req, res) => {
   });
 });
 
-// Health check
 app.get('/api/health', (req, res) => {
   const kioskId = req.headers['x-kiosk-id'] || req.query.kiosk;
 
@@ -767,28 +759,11 @@ setInterval(() => {
   if (cleaned > 0) console.log(`Cleaned ${cleaned} old sessions`);
 }, 30 * 60 * 1000);
 
-// Clean up old images every hour
-schedule.scheduleJob('0 * * * *', async () => {
-  try {
-    const outputDir = path.join(__dirname, 'outputs');
-    const files = await fs.readdir(outputDir);
-    const now = Date.now();
-    const maxAge = 4 * 60 * 60 * 1000; // 4 hours
-
-    for (const file of files) {
-      const filePath = path.join(outputDir, file);
-      const stats = await fs.stat(filePath);
-      if (now - stats.mtimeMs > maxAge) {
-        await fs.unlink(filePath);
-        console.log(`Deleted old file: ${file}`);
-      }
-    }
-  } catch (error) {
-    console.error('Cleanup error:', error);
-  }
-});
+// NOTE: Removed local file cleanup - S3 lifecycle policies handle this
+// You can set up S3 lifecycle rules in AWS console to auto-delete old files
 
 app.listen(PORT, () => {
   console.log(`🏃 Marathon Photobooth Backend running on port ${PORT}`);
   console.log(`📊 Monitor dashboard available at http://localhost:${PORT}/api/monitor`);
+  console.log(`☁️  S3 Bucket: ${S3_BUCKET}`);
 });

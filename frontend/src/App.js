@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import './App.css';
-import KioskSelector from './components/KioskSelector'; // Add this import
+import WelcomeScreen from './components/WelcomeScreen';
+import KioskSelector from './components/KioskSelector';
 import BackgroundSelector from './components/BackgroundSelector';
 import GenderSelector from './components/GenderSelector';
 import CameraCapture from './components/CameraCapture';
@@ -11,24 +12,21 @@ import axios from 'axios';
 const isElectron = window.electronAPI !== undefined;
 
 const getApiUrl = () => {
-  // Always use Railway URL for Electron or production
   if (window.electronAPI !== undefined || 
       window.location.protocol === 'file:' || 
       process.env.NODE_ENV === 'production') {
-    return 'https://marathon-photobooth-backend-production.up.railway.app';
+    // return 'https://marathon-photobooth-backend-production.up.railway.app';
+      return 'http://13.60.25.12';  // Your EC2 public IP
+
   }
-  
   return 'http://localhost:3001';
 };
 
 const API_URL = getApiUrl();
 
 function App() {
-  // Check if kiosk is already configured
   const savedKioskId = localStorage.getItem('kioskId');
   
-  // If kiosk is already set, start at step 1 (background selector)
-  // If not set, start at step 0 (kiosk selector)
   const [currentStep, setCurrentStep] = useState(savedKioskId ? 1 : 0);
   const [kioskId, setKioskId] = useState(savedKioskId || null);
   const [selectedBackground, setSelectedBackground] = useState(null);
@@ -36,16 +34,15 @@ function App() {
   const [capturedImage, setCapturedImage] = useState(null);
   const [generatedImage, setGeneratedImage] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingProgress, setLoadingProgress] = useState(0);
   const [error, setError] = useState(null);
   const [showMonitor, setShowMonitor] = useState(false);
   const [queuePosition, setQueuePosition] = useState(null);
   const [connectionStatus, setConnectionStatus] = useState('checking');
 
-  // Inactivity timer
   const inactivityTimer = useRef(null);
   const lastActivityTime = useRef(Date.now());
 
-  // Get kiosk info
   const KIOSK_SETTINGS = {
     'kiosk-1': { name: 'Entrance Booth', timeout: 120000, location: 'Main Entrance' },
     'kiosk-2': { name: 'Center Booth', timeout: 120000, location: 'Event Center' },
@@ -55,26 +52,24 @@ function App() {
 
   const kioskInfo = kioskId ? KIOSK_SETTINGS[kioskId] : null;
 
-  // Handle kiosk selection (only happens once at app launch)
   const handleKioskSelect = (selectedKioskId) => {
     setKioskId(selectedKioskId);
     localStorage.setItem('kioskId', selectedKioskId);
-    setCurrentStep(1); // Go to background selector
+    setCurrentStep(1);
   };
 
-  // Reset to start screen (goes to background selector, NOT kiosk selector)
   const resetToStart = useCallback(() => {
     console.log(`[${kioskId}] Resetting due to inactivity`);
-    setCurrentStep(1); // Reset to background selector (step 1), not kiosk selector
+    setCurrentStep(1);
     setSelectedBackground(null);
     setSelectedGender(null);
     setCapturedImage(null);
     setGeneratedImage(null);
     setError(null);
     setQueuePosition(null);
+    setLoadingProgress(0);
   }, [kioskId]);
 
-  // Reset inactivity timer
   const resetInactivityTimer = useCallback(() => {
     lastActivityTime.current = Date.now();
     
@@ -82,17 +77,15 @@ function App() {
       clearTimeout(inactivityTimer.current);
     }
     
-    // Don't reset if on step 0 (kiosk selection) or step 1 (home) or loading
     if (currentStep > 1 && !isLoading) {
       inactivityTimer.current = setTimeout(() => {
         resetToStart();
-      }, 60000); // 60 seconds timeout
+      }, 60000);
     }
   }, [currentStep, isLoading, resetToStart]);
 
-  // Check backend connection
   useEffect(() => {
-    if (!kioskId) return; // Don't check connection until kiosk is selected
+    if (!kioskId) return;
     
     const checkConnection = async () => {
       try {
@@ -114,7 +107,6 @@ function App() {
     return () => clearInterval(interval);
   }, [kioskId]);
 
-  // Setup inactivity tracking
   useEffect(() => {
     const events = ['mousedown', 'touchstart', 'keypress'];
     
@@ -138,13 +130,11 @@ function App() {
     };
   }, [resetInactivityTimer]);
 
-  // Toggle monitor with keyboard shortcut
   useEffect(() => {
     const handleKeyPress = (e) => {
       if (e.ctrlKey && e.shiftKey && e.key === 'M') {
         setShowMonitor(!showMonitor);
       }
-      // Add shortcut to reset kiosk selection (for testing/reconfiguration)
       if (e.ctrlKey && e.shiftKey && e.key === 'K') {
         localStorage.removeItem('kioskId');
         setKioskId(null);
@@ -156,8 +146,7 @@ function App() {
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, [showMonitor]);
 
-  const handleBackgroundSelect = (background) => {
-    setSelectedBackground(background);
+  const handleWelcomeStart = () => {
     setCurrentStep(2);
     resetInactivityTimer();
   };
@@ -168,22 +157,50 @@ function App() {
     resetInactivityTimer();
   };
 
+  const handleBackgroundSelect = (background) => {
+    setSelectedBackground(background);
+    setCurrentStep(4);
+    resetInactivityTimer();
+  };
+
   const handleImageCapture = (imageData) => {
     setCapturedImage(imageData);
-    setCurrentStep(4);
+    setCurrentStep(5);
     resetInactivityTimer();
   };
 
   const handleRetake = () => {
     setCapturedImage(null);
-    setCurrentStep(3);
+    setCurrentStep(4);
     resetInactivityTimer();
   };
+
+  // Add this helper function at the top of your App component (after the API_URL constant):
+  const getImageUrl = (imageUrl) => {
+    // If URL is already absolute (starts with http:// or https://), use it directly
+    if (imageUrl?.startsWith('http://') || imageUrl?.startsWith('https://')) {
+      return imageUrl;
+    }
+    // Otherwise, prepend backend URL (for local file paths)
+    return `${API_URL}${imageUrl}`;
+  };
+
 
   const handleGenerate = async () => {
     setIsLoading(true);
     setError(null);
     setQueuePosition(null);
+    setLoadingProgress(0);
+
+    const progressInterval = setInterval(() => {
+      setLoadingProgress(prev => {
+        if (prev >= 90) {
+          clearInterval(progressInterval);
+          return prev;
+        }
+        return prev + 10;
+      });
+    }, 2000);
 
     try {
       const base64Response = await fetch(capturedImage);
@@ -202,14 +219,20 @@ function App() {
         timeout: kioskInfo?.timeout || 120000
       });
 
+      clearInterval(progressInterval);
+      setLoadingProgress(100);
+
       if (response.data.success) {
-        setGeneratedImage(`${API_URL}${response.data.imageUrl}`);
-        setCurrentStep(5);
-        console.log(`[${kioskId}] Generated in ${response.data.processingTime}ms`);
+        setTimeout(() => {
+        setGeneratedImage(getImageUrl(response.data.imageUrl));
+          setCurrentStep(6);
+          console.log(`[${kioskId}] Generated in ${response.data.processingTime}ms`);
+        }, 500);
       } else {
         throw new Error(response.data.error || 'Generation failed');
       }
     } catch (err) {
+      clearInterval(progressInterval);
       console.error(`[${kioskId}] Generation error:`, err);
       
       if (err.response?.status === 503) {
@@ -227,7 +250,6 @@ function App() {
   };
 
   const handleStartOver = () => {
-    // Go back to background selector (step 1), NOT kiosk selector
     setCurrentStep(1);
     setSelectedBackground(null);
     setSelectedGender(null);
@@ -235,6 +257,7 @@ function App() {
     setGeneratedImage(null);
     setError(null);
     setQueuePosition(null);
+    setLoadingProgress(0);
     resetInactivityTimer();
   };
 
@@ -242,20 +265,14 @@ function App() {
     <div className="App" data-kiosk={kioskId}>
       {showMonitor && kioskId && <KioskMonitor kioskId={kioskId} />}
       
-      <header className="App-header">
-        <h1>🏃 Amsterdam Marathon 2025</h1>
-        <h2>
-          AI Photo Booth
-          {kioskInfo && ` - ${kioskInfo.name}`}
-        </h2>
-        {kioskId && process.env.NODE_ENV === 'development' && (
-          <div className="kiosk-debug">
-            Kiosk: {kioskId} | Location: {kioskInfo?.location}
-            <br />
-            <small>Press Ctrl+Shift+K to reconfigure kiosk</small>
-          </div>
-        )}
-      </header>
+      {/* Debug info - only in development */}
+      {kioskId && process.env.NODE_ENV === 'development' && (
+        <div className="kiosk-debug">
+          Kiosk: {kioskId} | Location: {kioskInfo?.location}
+          <br />
+          <small>Ctrl+Shift+K: reconfigure | Ctrl+Shift+M: monitor</small>
+        </div>
+      )}
 
       <main className="App-main">
         {currentStep === 0 && (
@@ -263,7 +280,7 @@ function App() {
         )}
 
         {currentStep === 1 && (
-          <BackgroundSelector onSelect={handleBackgroundSelect} />
+          <WelcomeScreen onStart={handleWelcomeStart} />
         )}
 
         {currentStep === 2 && (
@@ -271,23 +288,28 @@ function App() {
         )}
 
         {currentStep === 3 && (
-          <CameraCapture onCapture={handleImageCapture} />
+          <BackgroundSelector onSelect={handleBackgroundSelect} />
         )}
 
         {currentStep === 4 && (
+          <CameraCapture onCapture={handleImageCapture} />
+        )}
+
+        {currentStep === 5 && (
           <div className="preview-section">
-            <h3>Review Your Photo</h3>
+            <h3>Here's your photo!</h3>
+            <p className="subtitle">Review your captured image and decide if you'd like to proceed or retake</p>
             <img src={capturedImage} alt="Your selfie" className="preview-image" />
             <div className="button-group">
               <button onClick={handleRetake} className="btn btn-secondary">
-                📸 Retake Photo
+                🔄 Retake Photo
               </button>
               <button 
                 onClick={handleGenerate} 
-                className="btn btn-primary"
+                className="btn btn-primary btn-proceed"
                 disabled={isLoading}
               >
-                {isLoading ? 'Generating... ⏳' : '✨ Generate Marathon Photo'}
+                {isLoading ? 'Generating... ⏳' : 'Proceed →'}
               </button>
             </div>
             {error && (
@@ -299,7 +321,7 @@ function App() {
           </div>
         )}
 
-        {currentStep === 5 && generatedImage && (
+        {currentStep === 6 && generatedImage && (
           <ResultDisplay 
             imageUrl={generatedImage} 
             onStartOver={handleStartOver}
@@ -308,16 +330,56 @@ function App() {
         )}
 
         {isLoading && (
-          <div className="loading-overlay">
-            <div className="loader"></div>
-            <p>Creating your marathon moment...</p>
-            <p className="loading-subtitle">This may take 30-60 seconds</p>
-            {queuePosition && <p>Position in queue: {queuePosition}</p>}
+          <div className="loading-overlay-new">
+            <div className="loading-content">
+              <div className="loading-spinner-container">
+                <div className="loading-spinner-outer"></div>
+                <div className="loading-spinner-middle"></div>
+                <div className="loading-spinner-inner"></div>
+                <div className="loading-icon"></div>
+              </div>
+              
+              <h2 className="loading-title">
+                <span className="loading-highlight">AI Magic</span> in Progress
+              </h2>
+              <p className="loading-subtitle">
+                Your image is being generated. Please wait 15-20 seconds...
+              </p>
+              <p className="loading-description">
+                Our advanced AI is crafting your personalized photo with stunning detail and creativity
+              </p>
+              
+              <div className="loading-progress-bar">
+                <div 
+                  className="loading-progress-fill" 
+                  style={{ width: `${loadingProgress}%` }}
+                ></div>
+              </div>
+              <p className="loading-progress-text">Processing... {loadingProgress}%</p>
+              
+              <div className="loading-stages">
+                <div className={`stage ${loadingProgress >= 0 ? 'active' : ''} ${loadingProgress >= 25 ? 'completed' : ''}`}>
+                  <div className="stage-icon">📸</div>
+                  <p>Photo Captured</p>
+                </div>
+                <div className={`stage ${loadingProgress >= 25 ? 'active' : ''} ${loadingProgress >= 50 ? 'completed' : ''}`}>
+                  <div className="stage-icon">🎨</div>
+                  <p>Theme Applied</p>
+                </div>
+                <div className={`stage ${loadingProgress >= 50 ? 'active' : ''} ${loadingProgress >= 75 ? 'completed' : ''}`}>
+                  <div className="stage-icon">⚙️</div>
+                  <p>AI Processing</p>
+                </div>
+                <div className={`stage ${loadingProgress >= 75 ? 'active' : ''} ${loadingProgress >= 100 ? 'completed' : ''}`}>
+                  <div className="stage-icon">✅</div>
+                  <p>Finalizing</p>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </main>
 
-      {/* Inactivity warning - only show after step 1 */}
       {currentStep > 1 && !isLoading && (
         <div className="inactivity-timer" style={{
           display: Date.now() - lastActivityTime.current > 45000 ? 'block' : 'none'

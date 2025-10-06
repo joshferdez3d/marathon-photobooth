@@ -4,14 +4,13 @@ import './KioskMonitor.css';
 
 const API_URL = (() => {
   if (window.electronAPI !== undefined || window.location.protocol === 'file:') {
-    return 'https://marathon-photobooth-backend-production.up.railway.app';
+    return 'http://13.60.25.12';
   }
   if (process.env.NODE_ENV === 'production') {
-    return 'https://marathon-photobooth-backend-production.up.railway.app';
+    return 'http://13.60.25.12';
   }
   return process.env.REACT_APP_API_URL || 'http://localhost:3001';
 })();
-
 function KioskMonitor({ kioskId }) {
   const [monitorData, setMonitorData] = useState(null);
   const [error, setError] = useState(null);

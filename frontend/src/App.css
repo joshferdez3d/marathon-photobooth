@@ -24,21 +24,35 @@
   text-align: center;
   min-height: 100vh;
   height: 100vh;
-  background: linear-gradient(135deg, var(--tcs-blue) 0%, #3a6ba8 100%);
+  /* Background is now set inline in App.js */
   color: var(--brand-white);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.App-main {
-  flex: 1;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   position: relative;
 }
 
+/* Optional overlay for text readability */
+.App::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(78, 132, 196, 0.15); /* Adjust opacity as needed */
+  pointer-events: none;
+  z-index: 0;
+}
+
+.App-main {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
 /* Background Selector */
 .background-selector {
   animation: fadeIn 0.5s;

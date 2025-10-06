@@ -14,12 +14,12 @@
 .gender-selector-new h2 {
   font-size: 1.8rem;
   font-weight: 800;
-  color: white;
+  color: black;
   margin-bottom: 0.5rem;
 }
 
 .subtitle {
-  color: rgba(255, 255, 255, 0.9);
+  color: black;
   margin-bottom: 2rem;
   font-size: 1rem;
 }

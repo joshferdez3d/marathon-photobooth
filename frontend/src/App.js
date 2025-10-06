@@ -15,9 +15,7 @@ const getApiUrl = () => {
   if (window.electronAPI !== undefined || 
       window.location.protocol === 'file:' || 
       process.env.NODE_ENV === 'production') {
-    // return 'https://marathon-photobooth-backend-production.up.railway.app';
-      return 'http://13.60.25.12';  // Your EC2 public IP
-
+    return 'http://13.60.25.12';
   }
   return 'http://localhost:3001';
 };
@@ -51,6 +49,15 @@ function App() {
   };
 
   const kioskInfo = kioskId ? KIOSK_SETTINGS[kioskId] : null;
+
+  // Background image style - only apply when NOT on camera page (step 4)
+  const appBackgroundStyle = currentStep !== 4 ? {
+    backgroundImage: `url(${process.env.PUBLIC_URL}/Background.png)`,
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    backgroundRepeat: 'no-repeat',
+    backgroundAttachment: 'fixed'
+  } : {};
 
   const handleKioskSelect = (selectedKioskId) => {
     setKioskId(selectedKioskId);
@@ -175,16 +182,12 @@ function App() {
     resetInactivityTimer();
   };
 
-  // Add this helper function at the top of your App component (after the API_URL constant):
   const getImageUrl = (imageUrl) => {
-    // If URL is already absolute (starts with http:// or https://), use it directly
     if (imageUrl?.startsWith('http://') || imageUrl?.startsWith('https://')) {
       return imageUrl;
     }
-    // Otherwise, prepend backend URL (for local file paths)
     return `${API_URL}${imageUrl}`;
   };
-
 
   const handleGenerate = async () => {
     setIsLoading(true);
@@ -224,7 +227,7 @@ function App() {
 
       if (response.data.success) {
         setTimeout(() => {
-        setGeneratedImage(getImageUrl(response.data.imageUrl));
+          setGeneratedImage(getImageUrl(response.data.imageUrl));
           setCurrentStep(6);
           console.log(`[${kioskId}] Generated in ${response.data.processingTime}ms`);
         }, 500);
@@ -262,10 +265,9 @@ function App() {
   };
 
   return (
-    <div className="App" data-kiosk={kioskId}>
+    <div className="App" data-kiosk={kioskId} style={appBackgroundStyle}>
       {showMonitor && kioskId && <KioskMonitor kioskId={kioskId} />}
       
-      {/* Debug info - only in development */}
       {kioskId && process.env.NODE_ENV === 'development' && (
         <div className="kiosk-debug">
           Kiosk: {kioskId} | Location: {kioskInfo?.location}
@@ -336,7 +338,7 @@ function App() {
                 <div className="loading-spinner-outer"></div>
                 <div className="loading-spinner-middle"></div>
                 <div className="loading-spinner-inner"></div>
-                <div className="loading-icon"></div>
+                <div className="loading-icon">🎨</div>
               </div>
               
               <h2 className="loading-title">

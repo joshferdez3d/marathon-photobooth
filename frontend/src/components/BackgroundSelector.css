@@ -19,7 +19,7 @@
 .selector-title-unified {
   font-size: 1.8rem;
   font-weight: 800;
-  color: white;
+  color: black;
   margin: 0 0 0.5rem 0;
 }
 
@@ -28,7 +28,7 @@
 }
 
 .selector-subtitle-unified {
-  color: rgba(255, 255, 255, 0.9);
+  color: black;
   font-size: 0.95rem;
   margin: 0;
   line-height: 1.4;

@@ -1,29 +1,21 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import './App.css';
+import KioskSelector from './components/KioskSelector'; // Add this import
 import BackgroundSelector from './components/BackgroundSelector';
 import GenderSelector from './components/GenderSelector';
 import CameraCapture from './components/CameraCapture';
 import ResultDisplay from './components/ResultDisplay';
-import KioskMonitor from './components/KioskMonitor'; // New component
+import KioskMonitor from './components/KioskMonitor';
 import axios from 'axios';
-import KIOSK_CONFIG from './config/kiosk';
+
 const isElectron = window.electronAPI !== undefined;
 
-
 const getApiUrl = () => {
-  if (process.env.REACT_APP_API_URL) {
-    return process.env.REACT_APP_API_URL;
-  }
-  
-  // Check if we have a saved API URL in localStorage (for kiosk configuration)
-  const savedUrl = localStorage.getItem('apiUrl');
-  if (savedUrl) {
-    return savedUrl;
-  }
-  
-  // Default URLs
-  if (process.env.NODE_ENV === 'production' || isElectron) {
-    return 'https://marathon-photobooth-backend.railway.app'; // Replace with your Railway URL
+  // Always use Railway URL for Electron or production
+  if (window.electronAPI !== undefined || 
+      window.location.protocol === 'file:' || 
+      process.env.NODE_ENV === 'production') {
+    return 'https://marathon-photobooth-backend-production.up.railway.app';
   }
   
   return 'http://localhost:3001';
@@ -32,7 +24,13 @@ const getApiUrl = () => {
 const API_URL = getApiUrl();
 
 function App() {
-  const [currentStep, setCurrentStep] = useState(1);
+  // Check if kiosk is already configured
+  const savedKioskId = localStorage.getItem('kioskId');
+  
+  // If kiosk is already set, start at step 1 (background selector)
+  // If not set, start at step 0 (kiosk selector)
+  const [currentStep, setCurrentStep] = useState(savedKioskId ? 1 : 0);
+  const [kioskId, setKioskId] = useState(savedKioskId || null);
   const [selectedBackground, setSelectedBackground] = useState(null);
   const [selectedGender, setSelectedGender] = useState(null);
   const [capturedImage, setCapturedImage] = useState(null);
@@ -41,26 +39,40 @@ function App() {
   const [error, setError] = useState(null);
   const [showMonitor, setShowMonitor] = useState(false);
   const [queuePosition, setQueuePosition] = useState(null);
-    const [connectionStatus, setConnectionStatus] = useState('checking');
+  const [connectionStatus, setConnectionStatus] = useState('checking');
 
   // Inactivity timer
   const inactivityTimer = useRef(null);
   const lastActivityTime = useRef(Date.now());
 
   // Get kiosk info
-  const kioskInfo = KIOSK_CONFIG.settings[KIOSK_CONFIG.kioskId] || KIOSK_CONFIG.settings['kiosk-1'];
+  const KIOSK_SETTINGS = {
+    'kiosk-1': { name: 'Entrance Booth', timeout: 120000, location: 'Main Entrance' },
+    'kiosk-2': { name: 'Center Booth', timeout: 120000, location: 'Event Center' },
+    'kiosk-3': { name: 'VIP Booth', timeout: 180000, location: 'VIP Area' },
+    'kiosk-4': { name: 'Exit Booth', timeout: 120000, location: 'Main Exit' }
+  };
 
-  // Reset to start screen
+  const kioskInfo = kioskId ? KIOSK_SETTINGS[kioskId] : null;
+
+  // Handle kiosk selection (only happens once at app launch)
+  const handleKioskSelect = (selectedKioskId) => {
+    setKioskId(selectedKioskId);
+    localStorage.setItem('kioskId', selectedKioskId);
+    setCurrentStep(1); // Go to background selector
+  };
+
+  // Reset to start screen (goes to background selector, NOT kiosk selector)
   const resetToStart = useCallback(() => {
-    console.log(`[${KIOSK_CONFIG.kioskId}] Resetting due to inactivity`);
-    setCurrentStep(1);
+    console.log(`[${kioskId}] Resetting due to inactivity`);
+    setCurrentStep(1); // Reset to background selector (step 1), not kiosk selector
     setSelectedBackground(null);
     setSelectedGender(null);
     setCapturedImage(null);
     setGeneratedImage(null);
     setError(null);
     setQueuePosition(null);
-  }, []);
+  }, [kioskId]);
 
   // Reset inactivity timer
   const resetInactivityTimer = useCallback(() => {
@@ -70,19 +82,22 @@ function App() {
       clearTimeout(inactivityTimer.current);
     }
     
-    // Don't reset if on step 1 (start screen) or loading
+    // Don't reset if on step 0 (kiosk selection) or step 1 (home) or loading
     if (currentStep > 1 && !isLoading) {
       inactivityTimer.current = setTimeout(() => {
         resetToStart();
-      }, KIOSK_CONFIG.inactivityTimeout);
+      }, 60000); // 60 seconds timeout
     }
   }, [currentStep, isLoading, resetToStart]);
 
+  // Check backend connection
   useEffect(() => {
+    if (!kioskId) return; // Don't check connection until kiosk is selected
+    
     const checkConnection = async () => {
       try {
         const response = await axios.get(`${API_URL}/api/health`, {
-          headers: { 'X-Kiosk-Id': KIOSK_CONFIG.kioskId },
+          headers: { 'X-Kiosk-Id': kioskId },
           timeout: 5000
         });
         setConnectionStatus('connected');
@@ -97,7 +112,7 @@ function App() {
     checkConnection();
     const interval = setInterval(checkConnection, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [kioskId]);
 
   // Setup inactivity tracking
   useEffect(() => {
@@ -123,29 +138,17 @@ function App() {
     };
   }, [resetInactivityTimer]);
 
-  // Check kiosk health periodically
-  useEffect(() => {
-    const checkHealth = async () => {
-      try {
-        await axios.get(`${API_URL}/api/health`, {
-          headers: { 'X-Kiosk-Id': KIOSK_CONFIG.kioskId }
-        });
-      } catch (error) {
-        console.error('Health check failed:', error);
-      }
-    };
-    
-    checkHealth();
-    const interval = setInterval(checkHealth, 30000); // Every 30 seconds
-    
-    return () => clearInterval(interval);
-  }, []);
-
-  // Toggle monitor with keyboard shortcut (Ctrl+Shift+M)
+  // Toggle monitor with keyboard shortcut
   useEffect(() => {
     const handleKeyPress = (e) => {
       if (e.ctrlKey && e.shiftKey && e.key === 'M') {
         setShowMonitor(!showMonitor);
+      }
+      // Add shortcut to reset kiosk selection (for testing/reconfiguration)
+      if (e.ctrlKey && e.shiftKey && e.key === 'K') {
+        localStorage.removeItem('kioskId');
+        setKioskId(null);
+        setCurrentStep(0);
       }
     };
     
@@ -183,38 +186,32 @@ function App() {
     setQueuePosition(null);
 
     try {
-      // Convert base64 to blob
       const base64Response = await fetch(capturedImage);
       const blob = await base64Response.blob();
 
-      // Create form data
       const formData = new FormData();
       formData.append('selfie', blob, 'selfie.jpg');
       formData.append('backgroundId', selectedBackground.id);
       formData.append('gender', selectedGender);
 
-      // Send to backend with kiosk ID
       const response = await axios.post(`${API_URL}/api/generate`, formData, {
         headers: { 
           'Content-Type': 'multipart/form-data',
-          'X-Kiosk-Id': KIOSK_CONFIG.kioskId
+          'X-Kiosk-Id': kioskId
         },
-        timeout: kioskInfo.timeout || 120000
+        timeout: kioskInfo?.timeout || 120000
       });
 
       if (response.data.success) {
         setGeneratedImage(`${API_URL}${response.data.imageUrl}`);
         setCurrentStep(5);
-        
-        // Log successful generation
-        console.log(`[${KIOSK_CONFIG.kioskId}] Generated in ${response.data.processingTime}ms`);
+        console.log(`[${kioskId}] Generated in ${response.data.processingTime}ms`);
       } else {
         throw new Error(response.data.error || 'Generation failed');
       }
     } catch (err) {
-      console.error(`[${KIOSK_CONFIG.kioskId}] Generation error:`, err);
+      console.error(`[${kioskId}] Generation error:`, err);
       
-      // Check if it's a queue/rate limit error
       if (err.response?.status === 503) {
         setError('The system is busy. Please wait a moment and try again.');
         setQueuePosition(err.response?.data?.queueSize);
@@ -230,6 +227,7 @@ function App() {
   };
 
   const handleStartOver = () => {
+    // Go back to background selector (step 1), NOT kiosk selector
     setCurrentStep(1);
     setSelectedBackground(null);
     setSelectedGender(null);
@@ -241,20 +239,29 @@ function App() {
   };
 
   return (
-    <div className="App" data-kiosk={KIOSK_CONFIG.kioskId}>
-      {showMonitor && <KioskMonitor kioskId={KIOSK_CONFIG.kioskId} />}
+    <div className="App" data-kiosk={kioskId}>
+      {showMonitor && kioskId && <KioskMonitor kioskId={kioskId} />}
       
       <header className="App-header">
-        <h1>ðŸƒ Amsterdam Marathon 2025</h1>
-        <h2>AI Photo Booth - {kioskInfo.name}</h2>
-        {KIOSK_CONFIG.debug && (
+        <h1>🏃 Amsterdam Marathon 2025</h1>
+        <h2>
+          AI Photo Booth
+          {kioskInfo && ` - ${kioskInfo.name}`}
+        </h2>
+        {kioskId && process.env.NODE_ENV === 'development' && (
           <div className="kiosk-debug">
-            Kiosk: {KIOSK_CONFIG.kioskId} | Location: {kioskInfo.location}
+            Kiosk: {kioskId} | Location: {kioskInfo?.location}
+            <br />
+            <small>Press Ctrl+Shift+K to reconfigure kiosk</small>
           </div>
         )}
       </header>
 
       <main className="App-main">
+        {currentStep === 0 && (
+          <KioskSelector onSelect={handleKioskSelect} />
+        )}
+
         {currentStep === 1 && (
           <BackgroundSelector onSelect={handleBackgroundSelect} />
         )}
@@ -273,14 +280,14 @@ function App() {
             <img src={capturedImage} alt="Your selfie" className="preview-image" />
             <div className="button-group">
               <button onClick={handleRetake} className="btn btn-secondary">
-                ðŸ“¸ Retake Photo
+                📸 Retake Photo
               </button>
               <button 
                 onClick={handleGenerate} 
                 className="btn btn-primary"
                 disabled={isLoading}
               >
-                {isLoading ? 'Generating... â³' : 'âœ¨ Generate Marathon Photo'}
+                {isLoading ? 'Generating... ⏳' : '✨ Generate Marathon Photo'}
               </button>
             </div>
             {error && (
@@ -296,7 +303,7 @@ function App() {
           <ResultDisplay 
             imageUrl={generatedImage} 
             onStartOver={handleStartOver}
-            kioskId={KIOSK_CONFIG.kioskId}
+            kioskId={kioskId}
           />
         )}
 
@@ -310,12 +317,12 @@ function App() {
         )}
       </main>
 
-      {/* Inactivity warning */}
+      {/* Inactivity warning - only show after step 1 */}
       {currentStep > 1 && !isLoading && (
         <div className="inactivity-timer" style={{
           display: Date.now() - lastActivityTime.current > 45000 ? 'block' : 'none'
         }}>
-          Session will reset in {Math.ceil((KIOSK_CONFIG.inactivityTimeout - (Date.now() - lastActivityTime.current)) / 1000)} seconds
+          Session will reset in {Math.ceil((60000 - (Date.now() - lastActivityTime.current)) / 1000)} seconds
         </div>
       )}
     </div>

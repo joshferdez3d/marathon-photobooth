@@ -115,10 +115,6 @@
       "target": ["AppImage", "deb"],
       "category": "Photography",
       "icon": "build-resources"
-    },
-    "publish": {
-      "provider": "github",
-      "releaseType": "release"
     }
   },
   "browserslist": {

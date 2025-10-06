@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, shell, dialog } = require('electron');
+const { app, BrowserWindow, Menu, shell, dialog, systemPreferences } = require('electron'); // Add systemPreferences
 const path = require('path');
 const isDev = require('electron-is-dev');
 const { autoUpdater } = require('electron-updater');
@@ -12,6 +12,30 @@ if (isDev) {
     electron: path.join(__dirname, '..', 'node_modules', '.bin', 'electron'),
     hardResetMethod: 'exit'
   });
+}
+
+// Add camera permission checker
+async function checkCameraPermissions() {
+  if (process.platform === 'darwin') { // macOS
+    try {
+      const status = systemPreferences.getMediaAccessStatus('camera');
+      console.log('Camera permission status:', status);
+      
+      if (status === 'not-determined') {
+        const granted = await systemPreferences.askForMediaAccess('camera');
+        console.log('Camera permission granted:', granted);
+        return granted;
+      }
+      
+      return status === 'granted';
+    } catch (error) {
+      console.error('Error checking camera permissions:', error);
+      return false;
+    }
+  }
+  
+  // Windows/Linux usually grant permissions automatically
+  return true;
 }
 
 function createSplashWindow() {
@@ -41,16 +65,30 @@ function createWindow() {
     height: 1080,
     minWidth: 1024,
     minHeight: 768,
-    fullscreen: !isDev, // Start fullscreen in production
-    kiosk: !isDev, // Kiosk mode in production
+    fullscreen: !isDev,
+    kiosk: !isDev,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      preload: path.join(__dirname, 'preload.js')
+      preload: path.join(__dirname, 'preload.js'),
+      webSecurity: !isDev, // Disable web security in dev for easier camera access
+      // Add permissions policy
+      permissionPolicy: {
+        camera: ['self']
+      }
     },
-    icon: path.join(__dirname, 'icon.ico'), // You'll need to add this
+    icon: path.join(__dirname, 'icon.ico'),
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
-    show: false // Don't show until ready
+    show: false
+  });
+
+  // Handle permission requests from renderer
+  mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
+    if (permission === 'media') {
+      callback(true);
+    } else {
+      callback(true); // Allow other permissions
+    }
   });
 
   // Load the app
@@ -65,20 +103,36 @@ function createWindow() {
     mainWindow.webContents.openDevTools();
   }
 
-  // Show window when ready
-  mainWindow.once('ready-to-show', () => {
+  // Show window when ready and check camera permissions
+  mainWindow.once('ready-to-show', async () => {
+    // Check camera permissions before showing
+    const hasCameraAccess = await checkCameraPermissions();
+    
+    if (!hasCameraAccess && process.platform === 'darwin') {
+      dialog.showMessageBox(mainWindow, {
+        type: 'warning',
+        title: 'Camera Access Required',
+        message: 'Marathon Photo Booth needs camera access to take photos.',
+        detail: 'Please grant camera permission:\n\n1. Open System Preferences\n2. Go to Security & Privacy → Privacy\n3. Select Camera\n4. Check "Marathon Photo Booth"\n5. Restart the application',
+        buttons: ['OK', 'Open System Preferences']
+      }).then((result) => {
+        if (result.response === 1) {
+          shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_Camera');
+        }
+      });
+    }
+    
     setTimeout(() => {
       if (splashWindow) {
         splashWindow.close();
       }
       mainWindow.show();
       
-      // Focus window
       if (process.platform === 'darwin') {
         app.dock.show();
       }
       mainWindow.focus();
-    }, 1500); // Show splash for 1.5 seconds
+    }, 1500);
   });
 
   // Handle window closed
@@ -105,7 +159,7 @@ function createWindow() {
   }
 }
 
-// Create app menu
+// Create app menu (keep your existing menu code)
 function createMenu() {
   const template = [
     {
@@ -167,6 +221,14 @@ function createMenu() {
       label: 'Kiosk',
       submenu: [
         {
+          label: 'Reset Kiosk Selection',
+          click: () => {
+            mainWindow.webContents.executeJavaScript(
+              `localStorage.removeItem('kioskId'); window.location.reload();`
+            );
+          }
+        },
+        {
           label: 'Set Kiosk ID',
           click: async () => {
             const result = await dialog.showMessageBox(mainWindow, {
@@ -192,6 +254,19 @@ function createMenu() {
             mainWindow.webContents.executeJavaScript(
               `document.dispatchEvent(new KeyboardEvent('keydown', {ctrlKey: true, shiftKey: true, key: 'M'}));`
             );
+          }
+        },
+        { type: 'separator' },
+        {
+          label: 'Check Camera Permission',
+          click: async () => {
+            const hasCameraAccess = await checkCameraPermissions();
+            dialog.showMessageBox(mainWindow, {
+              type: 'info',
+              title: 'Camera Permission Status',
+              message: hasCameraAccess ? 'Camera access is granted' : 'Camera access is denied',
+              buttons: ['OK']
+            });
           }
         }
       ]
@@ -238,7 +313,17 @@ function createMenu() {
 }
 
 // App event handlers
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  // Request camera access on app start (macOS)
+  if (process.platform === 'darwin') {
+    try {
+      const cameraAccess = await systemPreferences.askForMediaAccess('camera');
+      console.log('Camera access granted:', cameraAccess);
+    } catch (error) {
+      console.error('Failed to request camera access:', error);
+    }
+  }
+  
   createSplashWindow();
   createWindow();
   createMenu();

@@ -3,8 +3,19 @@ import './BackgroundSelector.css';
 import KIOSK_CONFIG from '../config/kiosk';
 import axios from 'axios';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001';
-
+const API_URL = (() => {
+  // For Electron production build
+  if (window.electronAPI !== undefined || window.location.protocol === 'file:') {
+    return 'https://marathon-photobooth-backend-production.up.railway.app';
+  }
+  
+  // For production web build
+  if (process.env.NODE_ENV === 'production') {
+    return 'https://marathon-photobooth-backend-production.up.railway.app';
+  }
+  
+  return process.env.REACT_APP_API_URL || 'http://localhost:3001';
+})();
 function BackgroundSelector({ onSelect }) {
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [categories, setCategories] = useState(null);

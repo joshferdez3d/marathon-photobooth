@@ -46,10 +46,15 @@ const generationQueue = new PQueue({
   intervalCap: 3     // Max 3 per second
 });
 
-// Rate limiter per kiosk
+// Rate limiter per kiosk (disabled for test-script)
 const kioskLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute window
-  max: 5,              // 5 requests per minute per kiosk
+  windowMs: 60 * 1000,
+  max: 5,
+  skip: (req) => {
+    // Skip rate limiting for test script
+    const kioskId = req.headers['x-kiosk-id'];
+    return kioskId === 'test-script';
+  },
   keyGenerator: (req) => req.headers['x-kiosk-id'] || 'unknown',
   message: 'Too many requests from this kiosk, please wait',
   standardHeaders: true,
@@ -175,7 +180,7 @@ const BACKGROUNDS = {
   },
   "amsterdam750-goldenage": {
     name: "Golden Age Harbor",
-    file: "Amsterdam750-GoldenAgeV2.png",
+    file: "Amsterdam750-GoldenAge.png",
     description: "Sepia-toned Amsterdam harbor from the Golden Age",
     lighting: "soft, diffused historical lighting",
     colorTreatment: "sepia vintage filter with muted browns and yellows",
@@ -187,7 +192,7 @@ const BACKGROUNDS = {
   },
   "amsterdam750-rijksmuseum": {
     name: "Rijksmuseum Celebration",
-    file: "Amsterdam750-RijksmuseumV6.png",
+    file: "Amsterdam750-Rijksmuseum.png",
     description: "Sepia-toned vintage mararthon at the Rijksmuseum, no other runners or people in the background",
     lighting: "soft, diffused historical lighting",
     colorTreatment: "sepia vintage filter with muted browns and yellows",
@@ -200,7 +205,7 @@ const BACKGROUNDS = {
   },
   "future-solarbridge": {
     name: "Solar Bridge Run",
-    file: "FutureofRunning-SolarBridge3.png",
+    file: "FutureofRunning-SolarStreet.png",
     description: "Futuristic bridge with solar panels and drone spectators",
     lighting: "bright futuristic lighting with LED accents",
     colorTreatment: "full color with blue-cyan tech tones",
@@ -212,7 +217,7 @@ const BACKGROUNDS = {
   },
   "future-biodomes": {
     name: "Canal Biodomes",
-    file: "FutureofRunningBiodomes2.png",
+    file: "FutureofRunning-Biodomes.png",
     description: "Future Amsterdam with biodome structures along canals",
     lighting: "soft bioluminescent and natural light mix",
     colorTreatment: "full color with green-blue environmental tones",
@@ -224,7 +229,7 @@ const BACKGROUNDS = {
   },
   "future-smartfinish": {
     name: "Smart Stadium Finish",
-    file: "FututeofRunning-SmartFinish6.png", // keep typo if filename is exactly this
+    file: "FutureofRunning-SmartFinish.png", // keep typo if filename is exactly this
     description: "High-tech stadium with robotic assistants and holographic finish line",
     lighting: "bright stadium lighting with holographic effects",
     colorTreatment: "full color vibrant with neon accents",
@@ -247,7 +252,7 @@ const BACKGROUNDS = {
   },
   "tcs50-iamsterdam": {
     name: "I Amsterdam",
-    file: "TCS50-IamsterdamV4.png",
+    file: "TCS50-Iamsterdam.png",
     description: "Modern marathon at the iconic I Amsterdam sign",
     lighting: "bright modern daylight",
     colorTreatment: "full color contemporary photography",
@@ -278,21 +283,26 @@ function getPeriodAppropriateClothing(timePeriod, era) {
       "- Simple white/cream cotton athletic shirt",
       "- Dark knee-length athletic shorts/knickerbockers",
       "- Long dark socks; canvas/leather lace-up shoes",
-      "- Natural fabrics; no modern logos"
+      "- Natural fabrics; no modern logos",
+      "- Clothing should appear to fit their body naturally, not be artificially tight or loose",
+
     ],
     present: [
       "MODERN ATHLETIC ATTIRE (2025) - GENDER NEUTRAL:",
       "- Moisture-wicking running t-shirt (solid athletic color)",
       "- Mid-thigh modern running shorts",
       "- Current running shoes (subtle design, no heavy branding)",
-      "- Optional simple running watch"
+      "- Optional simple running watch",
+      "- Clothing should appear to fit their body naturally, not be artificially tight or loose"
     ],
     future: [
       "FUTURISTIC ATHLETIC ATTIRE (2050s) - GENDER NEUTRAL:",
       "- Sleek bio-responsive athletic top (subtle geometric patterns)",
       "- Streamlined shorts with smart fabric",
       "- Advanced cushioning shoes; minimal design",
-      "- Subtle holographic/bioluminescent accents"
+      "- Subtle holographic/bioluminescent accents",
+      "- Clothing should appear to fit their body naturally, not be artificially tight or loose",
+
     ]
   };
   return clothingByPeriod[timePeriod] || clothingByPeriod.present;
@@ -319,6 +329,21 @@ function generateGenderAwarePrompt(gender, backgroundInfo, prominence = "medium"
       "- The runner should occupy approximately 15-25% of frame height maximum"
     ].join("\n");
   }
+
+  // Add body type preservation instruction
+  const bodyTypePreservation = [
+    "BODY TYPE PRESERVATION (CRITICAL):",
+    "- Maintain the person's EXACT body type, shape, and build from the input photo",
+    "- DO NOT alter their physique to match an 'ideal runner' body type",
+    "- Preserve their natural body proportions, including:",
+    "  • Body frame size (slim, average, athletic, plus-size, etc.)",
+    "  • Natural muscle definition or lack thereof",
+    "  • Body shape and curves exactly as shown",
+    "  • Height-to-width proportions",
+    "- The athletic clothing should fit their actual body type naturally",
+    "- This person is a marathon participant regardless of body type - represent them authentically",
+    "- Apply NO body modifications except clothing change"
+  ].join("\n");
 
   const periodClothing = getPeriodAppropriateClothing(
     backgroundInfo.timePeriod || "present",
@@ -442,6 +467,7 @@ function generateGenderAwarePrompt(gender, backgroundInfo, prominence = "medium"
     `Background: ${backgroundInfo.description}.`,
     colorTreatmentInstruction,
     artisticStyleInstruction,
+    bodyTypePreservation,
 
     "PLACEMENT, SCALE, & PERSPECTIVE (HIGHEST PRIORITY):",
     "1. **Placement:** " + compositionNote,
@@ -480,7 +506,10 @@ function generateGenderAwarePrompt(gender, backgroundInfo, prominence = "medium"
     "- **Scale is realistic and consistent across genders (not disproportionately large).**",
     "- **Female subjects placed at proper distance, not closer than intended.**",
     "- Color/artistic treatment uniformly applied.",
-    "- Shadows/lighting/perspective seamlessly match background."
+    "- Shadows/lighting/perspective seamlessly match background.",
+    "- Athletic wear appropriate for their body type",
+    "- Show realistic movement for their build",
+    "- Natural running/walking form for their physique"
   ].filter(Boolean).join("\n");
 }
 

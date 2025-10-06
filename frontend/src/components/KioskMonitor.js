@@ -2,7 +2,15 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import './KioskMonitor.css';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001';
+const API_URL = (() => {
+  if (window.electronAPI !== undefined || window.location.protocol === 'file:') {
+    return 'https://marathon-photobooth-backend-production.up.railway.app';
+  }
+  if (process.env.NODE_ENV === 'production') {
+    return 'https://marathon-photobooth-backend-production.up.railway.app';
+  }
+  return process.env.REACT_APP_API_URL || 'http://localhost:3001';
+})();
 
 function KioskMonitor({ kioskId }) {
   const [monitorData, setMonitorData] = useState(null);

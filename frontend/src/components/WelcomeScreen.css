@@ -9,10 +9,16 @@
   flex-direction: column;
   justify-content: center;
   overflow: hidden;
+  align-items: center; /* Add this - centers all children horizontally */
+
 }
 
 .welcome-icon {
   margin-bottom: 1.5rem;
+  display: flex; /* Add this */
+  justify-content: center; /* Add this */
+  align-items: center; /* Add this */
+  width: 100%; /* Add this - ensures full width for centering */
 }
 
 .camera-icon {

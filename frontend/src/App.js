@@ -87,7 +87,7 @@ function App() {
     if (currentStep > 1 && !isLoading) {
       inactivityTimer.current = setTimeout(() => {
         resetToStart();
-      }, 60000);
+      }, 90000);
     }
   }, [currentStep, isLoading, resetToStart]);
 
@@ -294,7 +294,13 @@ function App() {
         )}
 
         {currentStep === 4 && (
-          <CameraCapture onCapture={handleImageCapture} />
+          <CameraCapture 
+            onCapture={handleImageCapture}
+            onBack={() => {
+              setCurrentStep(3);
+              resetInactivityTimer();
+            }}
+          />
         )}
 
         {currentStep === 5 && (
@@ -386,7 +392,7 @@ function App() {
         <div className="inactivity-timer" style={{
           display: Date.now() - lastActivityTime.current > 45000 ? 'block' : 'none'
         }}>
-          Session will reset in {Math.ceil((60000 - (Date.now() - lastActivityTime.current)) / 1000)} seconds
+          Session will reset in {Math.ceil((90000 - (Date.now() - lastActivityTime.current)) / 1000)} seconds
         </div>
       )}
     </div>

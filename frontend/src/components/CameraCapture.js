@@ -1,7 +1,7 @@
 import React, { useRef, useState, useCallback, useEffect } from 'react';
 import Webcam from 'react-webcam';
 
-function CameraCapture({ onCapture }) {
+function CameraCapture({ onCapture, onBack }) {
   const webcamRef = useRef(null);
   const [countdown, setCountdown] = useState(null);
   const [shouldCapture, setShouldCapture] = useState(false);
@@ -53,8 +53,8 @@ function CameraCapture({ onCapture }) {
           screenshotFormat="image/jpeg"
           videoConstraints={videoConstraints}
           className="webcam-fullscreen"
-          mirrored={true} // Mirror the video like a selfie camera
-          screenshotQuality={0.92} // High quality screenshots
+          mirrored={true}
+          screenshotQuality={0.92}
         />
         
         {countdown && (
@@ -67,10 +67,19 @@ function CameraCapture({ onCapture }) {
           <div className="guide-frame"></div>
         </div>
 
-        {/* Header overlay */}
+        {/* Header overlay with back button */}
         <div className="camera-header-overlay">
-          <h3>Take Your Photo</h3>
-          <p>Position yourself in the center and smile!</p>
+          <button 
+            onClick={onBack} 
+            className="btn-back-camera"
+            disabled={countdown !== null}
+          >
+            ← Back
+          </button>
+          <div className="camera-header-text">
+            <h3>Take Your Photo</h3>
+            <p>Position yourself in the center and smile!</p>
+          </div>
         </div>
 
         {/* Button overlay at bottom */}

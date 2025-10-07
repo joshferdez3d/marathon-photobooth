@@ -552,7 +552,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.9);
+  background: rgba(0, 0, 0, 1);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -725,7 +725,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: linear-gradient(135deg, rgba(78, 132, 196, 0.98) 0%, rgba(58, 107, 168, 0.98) 100%);
+  background: linear-gradient(135deg, rgba(78, 132, 196) 0%, rgba(58, 107, 168) 100%);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1001,12 +1001,12 @@
 .preview-section h3 {
   font-size: 2rem;
   font-weight: 800;
-  color: white;
+  color: black;
   margin-bottom: 0.5rem;
 }
 
 .preview-section .subtitle {
-  color: rgba(255, 255, 255, 0.9);
+  color: black;
   margin-bottom: 2rem;
   text-align: center;
   max-width: 500px;
@@ -1035,6 +1035,107 @@
 
 [data-kiosk="kiosk-4"] .App-header {
   border-bottom-color: #EF5350;
+}
+
+/* Updated header overlay to accommodate back button */
+.camera-header-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding: 1.5rem 1rem 1rem;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.8), transparent);
+  text-align: center;
+  z-index: 10;
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.btn-back-camera {
+  background: rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(10px);
+  border: 2px solid rgba(255, 255, 255, 0.8);
+  color: white;
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-left: 0px; /* Add space for window controls */
+  margin-top: 0px;
+
+}
+
+.btn-back-camera:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.3);
+  transform: translateX(-4px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.btn-back-camera:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.camera-header-text {
+  flex: 1;
+  text-align: center;
+}
+
+.camera-header-text h3 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.5rem;
+  color: var(--brand-white);
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+  font-weight: 700;
+}
+
+.camera-header-text p {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--brand-white);
+  opacity: 0.9;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .btn-back-camera {
+    padding: 0.6rem 1.2rem;
+    font-size: 0.9rem;
+  }
+  
+  .camera-header-text h3 {
+    font-size: 1.2rem;
+  }
+  
+  .camera-header-text p {
+    font-size: 0.9rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .camera-header-overlay {
+    padding: 1rem 0.75rem 0.75rem;
+    gap: 0.5rem;
+  }
+  
+  .btn-back-camera {
+    padding: 0.5rem 1rem;
+    font-size: 0.85rem;
+  }
+  
+  .camera-header-text h3 {
+    font-size: 1rem;
+  }
+  
+  .camera-header-text p {
+    font-size: 0.85rem;
+  }
 }
 
 /* Disable text selection for kiosk mode */

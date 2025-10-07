@@ -8,12 +8,25 @@ function ResultDisplay({ imageUrl, onStartOver }) {
   const [consent, setConsent] = useState(false);
   const [qrCodeUrl, setQrCodeUrl] = useState('');
 
+  const API_URL = (() => {
+    // For Electron production build
+    if (window.electronAPI !== undefined || window.location.protocol === 'file:') {
+      return 'http://13.60.25.12';  // Your EC2 public IP
+    }
+    
+    // For production web build
+    if (process.env.NODE_ENV === 'production') {
+      return 'http://13.60.25.12';  // Your EC2 public IP
+    }
+    
+    return process.env.REACT_APP_API_URL || 'http://localhost:3001';
+  })();
+
   useEffect(() => {
-    // Generate QR code for the download page URL
     const generateQR = async () => {
       try {
-        // Create a full URL to the download page
-        const downloadUrl = `${window.location.origin}/download?url=${encodeURIComponent(imageUrl)}`;
+        // Point to the download.html page on your server with the S3 URL
+        const downloadUrl = `${API_URL}/download.html?url=${encodeURIComponent(imageUrl)}`;
         
         const qr = await QRCode.toDataURL(downloadUrl, {
           width: 180,

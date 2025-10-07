@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import './App.css';
 import WelcomeScreen from './components/WelcomeScreen';
 import KioskSelector from './components/KioskSelector';
@@ -7,6 +8,7 @@ import GenderSelector from './components/GenderSelector';
 import CameraCapture from './components/CameraCapture';
 import ResultDisplay from './components/ResultDisplay';
 import KioskMonitor from './components/KioskMonitor';
+import DownloadPage from './components/DownloadPage';
 import axios from 'axios';
 
 const isElectron = window.electronAPI !== undefined;
@@ -22,7 +24,8 @@ const getApiUrl = () => {
 
 const API_URL = getApiUrl();
 
-function App() {
+// Renamed from App to KioskApp
+function KioskApp() {
   const savedKioskId = localStorage.getItem('kioskId');
   
   const [currentStep, setCurrentStep] = useState(savedKioskId ? 1 : 0);
@@ -396,6 +399,20 @@ function App() {
         </div>
       )}
     </div>
+  );
+}
+
+// Main App component with routing
+function App() {
+  return (
+    <Router>
+      <Routes>
+        <Route path="/" element={<KioskApp />} />
+        <Route path="/download/:imageId" element={<DownloadPage />} />
+        <Route path="/download" element={<DownloadPage />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </Router>
   );
 }
 

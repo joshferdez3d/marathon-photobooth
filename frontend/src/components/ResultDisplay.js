@@ -9,10 +9,13 @@ function ResultDisplay({ imageUrl, onStartOver }) {
   const [qrCodeUrl, setQrCodeUrl] = useState('');
 
   useEffect(() => {
-    // Generate QR code for the image download URL
+    // Generate QR code for the download page URL
     const generateQR = async () => {
       try {
-        const qr = await QRCode.toDataURL(imageUrl, {
+        // Create a full URL to the download page
+        const downloadUrl = `${window.location.origin}/download?url=${encodeURIComponent(imageUrl)}`;
+        
+        const qr = await QRCode.toDataURL(downloadUrl, {
           width: 180,
           margin: 2,
           color: {

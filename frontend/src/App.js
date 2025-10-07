@@ -338,7 +338,7 @@ function App() {
                 <div className="loading-spinner-outer"></div>
                 <div className="loading-spinner-middle"></div>
                 <div className="loading-spinner-inner"></div>
-                <div className="loading-icon">🎨</div>
+                <div className="loading-icon"></div>
               </div>
               
               <h2 className="loading-title">

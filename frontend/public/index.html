@@ -2,48 +2,25 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
+    <base href="./" />
+    <link rel="icon" href="./favicon.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-    <meta name="theme-color" content="#764ba2" />
-    <meta name="description" content="Amsterdam Marathon 2025 - AI Photo Booth | Transform yourself into a marathon runner with AI technology" />
+    <meta name="theme-color" content="#4E84C4" />
+    <meta name="description" content="Amsterdam Marathon 2025 - AI Photo Booth" />
     
-    <!-- iOS/iPad specific meta tags for full-screen web app -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Marathon Booth" />
     
-    <!-- Prevent zooming on input focus for better iPad experience -->
-    <meta name="format-detection" content="telephone=no" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+    <link rel="manifest" href="./manifest.json" />
     
-    <!-- iOS splash screen and icons -->
-    <link rel="apple-touch-icon" sizes="180x180" href="%PUBLIC_URL%/apple-touch-icon.png" />
-    <link rel="apple-touch-icon" sizes="152x152" href="%PUBLIC_URL%/apple-touch-icon-152.png" />
-    <link rel="apple-touch-icon" sizes="120x120" href="%PUBLIC_URL%/apple-touch-icon-120.png" />
-    
-    <!-- Open Graph tags for social sharing -->
-    <meta property="og:title" content="Amsterdam Marathon 2025 - AI Photo Booth" />
-    <meta property="og:description" content="Transform yourself into a marathon runner with our AI-powered photo booth!" />
-    <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://marathon.amsterdam" />
-    <meta property="og:image" content="%PUBLIC_URL%/og-image.jpg" />
-    
-    <!-- Twitter Card tags -->
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Amsterdam Marathon 2025 - AI Photo Booth" />
-    <meta name="twitter:description" content="Transform yourself into a marathon runner with our AI-powered photo booth!" />
-    <meta name="twitter:image" content="%PUBLIC_URL%/twitter-image.jpg" />
-    
-    <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     
-    <!-- Manifest for PWA -->
-    <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
-    
     <title>Amsterdam Marathon 2025 - AI Photo Booth</title>
     
-    <!-- Inline critical styles for faster initial paint -->
     <style>
       * {
         margin: 0;
@@ -53,11 +30,9 @@
       
       body {
         margin: 0;
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-          'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
-        background-image: url('%PUBLIC_URL%/background.png');
         background-size: cover;
         background-position: center;
         background-repeat: no-repeat;
@@ -66,7 +41,6 @@
         overflow-x: hidden;
       }
       
-      /* Prevent bounce scrolling on iOS */
       html {
         height: 100%;
         width: 100%;
@@ -76,17 +50,15 @@
         height: 100%;
         width: 100%;
         overflow-y: auto;
-        -webkit-overflow-scrolling: touch;
       }
       
-      /* Loading screen styles */
       .app-loader {
         position: fixed;
         top: 0;
         left: 0;
         width: 100%;
         height: 100%;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(135deg, #4E84C4 0%, #3a6ba8 100%);
         display: flex;
         flex-direction: column;
         justify-content: center;
@@ -115,76 +87,29 @@
         100% { transform: rotate(360deg); }
       }
       
-      /* Hide loader when React app loads */
       .app-loaded .app-loader {
         display: none;
       }
       
-      /* Disable text selection for kiosk mode */
       .no-select {
         -webkit-user-select: none;
-        -moz-user-select: none;
-        -ms-user-select: none;
         user-select: none;
       }
       
-      /* Custom scrollbar for webkit browsers */
-      ::-webkit-scrollbar {
-        width: 8px;
-        height: 8px;
-      }
-      
-      ::-webkit-scrollbar-track {
-        background: rgba(255, 255, 255, 0.1);
-      }
-      
-      ::-webkit-scrollbar-thumb {
-        background: rgba(255, 255, 255, 0.3);
-        border-radius: 4px;
-      }
-      
-      ::-webkit-scrollbar-thumb:hover {
-        background: rgba(255, 255, 255, 0.5);
-      }
-      
-      /* Prevent pull-to-refresh on mobile */
       body {
         overscroll-behavior-y: none;
       }
     </style>
     
-    <!-- Script to handle initial loading and device detection -->
     <script>
-      // Add class when app is loaded
       window.addEventListener('DOMContentLoaded', function() {
         setTimeout(function() {
           document.body.classList.add('app-loaded');
         }, 1000);
       });
       
-      // Prevent default touch behaviors for kiosk mode
-      document.addEventListener('gesturestart', function(e) {
-        e.preventDefault();
-      });
-      
-      // Detect if running as standalone web app on iOS
-      if (window.navigator.standalone) {
-        document.documentElement.classList.add('standalone');
-      }
-      
-      // Handle viewport height on iOS devices
-      function setViewportHeight() {
-        const vh = window.innerHeight * 0.01;
-        document.documentElement.style.setProperty('--vh', `${vh}px`);
-      }
-      
-      window.addEventListener('resize', setViewportHeight);
-      window.addEventListener('orientationchange', setViewportHeight);
-      setViewportHeight();
-      
-      // Console welcome message
-      console.log('%c🏃 Amsterdam Marathon 2025 - AI Photo Booth', 
-        'background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; font-size: 20px; padding: 10px; border-radius: 5px;');
+      console.log('%c🏃 Amsterdam Marathon 2025', 
+        'background: #4E84C4; color: white; font-size: 20px; padding: 10px;');
     </script>
   </head>
   <body class="no-select">
@@ -194,24 +119,11 @@
       </div>
     </noscript>
     
-    <!-- Loading screen shown before React loads -->
     <div class="app-loader" id="app-loader">
       <div class="app-loader-spinner"></div>
       <div class="app-loader-text">Amsterdam Marathon 2025</div>
     </div>
     
-    <!-- React root element -->
     <div id="root"></div>
-    
-    <!-- Error boundary fallback -->
-    <script>
-      window.addEventListener('error', function(event) {
-        if (event.error && event.error.message && event.error.message.includes('ChunkLoadError')) {
-          // Handle chunk load errors (common in production)
-          console.error('Chunk load error detected, reloading page...');
-          window.location.reload();
-        }
-      });
-    </script>
   </body>
 </html>

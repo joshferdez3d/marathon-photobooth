@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';  // Changed this line
 import './App.css';
 import WelcomeScreen from './components/WelcomeScreen';
 import KioskSelector from './components/KioskSelector';

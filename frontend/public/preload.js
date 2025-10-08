@@ -1,17 +1,17 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge } = require('electron');
 
-// Expose protected methods that allow the renderer process to use
-// the ipcRenderer without exposing the entire object
 contextBridge.exposeInMainWorld('electronAPI', {
   platform: process.platform,
   
-  // Kiosk management
+  // Kiosk management - fixed to work without localStorage in preload
   setKioskId: (id) => {
-    localStorage.setItem('kioskId', id);
+    // Store in memory, not localStorage (which isn't available in preload)
+    return id;
   },
   
   getKioskId: () => {
-    return localStorage.getItem('kioskId') || 'kiosk-1';
+    // Return null, let the renderer handle localStorage
+    return null;
   },
   
   // System info
@@ -19,20 +19,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
     platform: process.platform,
     version: process.versions.electron,
     node: process.versions.node
-  }),
-  
-  // IPC communication (if needed in future)
-  send: (channel, data) => {
-    const validChannels = ['toMain'];
-    if (validChannels.includes(channel)) {
-      ipcRenderer.send(channel, data);
-    }
-  },
-  
-  receive: (channel, func) => {
-    const validChannels = ['fromMain'];
-    if (validChannels.includes(channel)) {
-      ipcRenderer.on(channel, (event, ...args) => func(...args));
-    }
-  }
+  })
 });

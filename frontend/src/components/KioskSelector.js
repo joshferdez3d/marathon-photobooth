@@ -34,12 +34,14 @@ function KioskSelector({ onSelect }) {
   ];
 
   const handleSelect = (kioskId) => {
-    // Save to localStorage
+    // Save to localStorage directly (renderer has access)
     localStorage.setItem('kioskId', kioskId);
-    // Update in Electron if available
-    if (window.electronAPI) {
+    
+    // Also call electronAPI if available (but not required)
+    if (window.electronAPI && typeof window.electronAPI.setKioskId === 'function') {
       window.electronAPI.setKioskId(kioskId);
     }
+    
     onSelect(kioskId);
   };
 

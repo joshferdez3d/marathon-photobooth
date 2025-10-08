@@ -1,15 +1,15 @@
 import React, { useState } from 'react';
 import './GenderSelector.css';
-
+import maleIcon from '../assets/icons/male-icon.png';
+import femaleIcon from '../assets/icons/female-icon.png';
 function GenderSelector({ onSelect }) {
   const [selectedGender, setSelectedGender] = useState(null);
 
   const genderOptions = [
-    { id: 'male', label: 'Male', icon: '/icons/male-icon.png' },
-    { id: 'female', label: 'Female', icon: '/icons/female-icon.png' },
-    // { id: 'non-binary', label: 'Non-binary / others', icon: '/icons/nonbinary-icon.png' }
+    { id: 'male', label: 'Male', icon: maleIcon },
+    { id: 'female', label: 'Female', icon: femaleIcon },
   ];
-
+  
   const handleSelect = (genderId) => {
     setSelectedGender(genderId);
     onSelect(genderId);
